@@ -9,7 +9,12 @@ Please note that all sequencing reads below 200 bp are filtered out as IGH VDJ r
 
 ## Important commands
 To compile the C-code:
+
 gcc SWscore.c -o SWscore
+
+Compare a clonotype sequence to reads in fastq file format: 
+
+./swigh-score [filename.fastq] [number of threads] [clonotype DNA string]
 
 
 
