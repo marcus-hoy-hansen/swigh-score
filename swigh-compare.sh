@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-./swigh-score.sh $1 8 $2 clone
-./swigh-score.sh $1 8 $3 spikein
+./swigh-score $1 $2 $3 clone
+./swigh-score $1 $2 $4 spikein
 bin/report.sh $1'.out'
 
