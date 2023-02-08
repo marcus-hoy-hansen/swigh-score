@@ -12,7 +12,6 @@ cut -f1 tmp/counts.txt > tmp/stack.fastq
 n=$(< tmp/counts.txt wc -l)
 lines=$(awk -v num=$n -v threads=$2 'BEGIN {print int(num/threads)}')
 
-echo $lines
 echo "Splitting fastq file into chunks of $lines lines"
 split -l $lines tmp/stack.fastq tmp/split.stack.
 
