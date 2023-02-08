@@ -12,7 +12,7 @@ Download the script folder from github:
 
 git clone https://github.com/marcus-hoy-hansen/swigh-score
 
-Go the folder, s and configure the scripts (compiling the C code on linux platforms):
+Go the folder and configure the scripts (compiling the C code on linux platforms and changing permissions of executables):
 
 cd swigh-score
 
