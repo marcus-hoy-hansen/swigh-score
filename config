@@ -1,0 +1,14 @@
+#!/bin/bash
+#set -x
+
+echo "Compiling C code"
+gcc bin/SWscore.c -o bin/SWscore
+
+echo "Changing permissions of executables"
+chmod u+x bin/SWscore
+chmod u+x swigh-score.sh
+chmod u+x swigh-compare.sh
+chmod u+x bin/SWscoresequences.sh
+chmod u+x bin/report.sh
+
+echo "Finished configuration"
