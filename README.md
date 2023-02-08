@@ -16,5 +16,13 @@ Compare a clonotype sequence to reads in fastq file format:
 
 ./swigh-score [filename.fastq] [number of threads] [clonotype DNA string]
 
+Compare a clonotype sequence to control sequence spiked in known concentrations (e.g. 100 cells) to enable direct quantification of clonal B-cells (runs the analysis twice and reports the number of reads (>=98% match) for each compared to the total number of reads):
+
+./swigh-compare [filename.fastq] [number of threads] [clonotype DNA string] [spike-in control DNA string]
+
+## Examples
+
+
+
 
 
