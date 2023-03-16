@@ -22,9 +22,9 @@ int main(int argc,char* argv[])
 	for(int i=0;i<cnum2;i++){
 		for(int j=0;j<cnum1;j++){
 			if(str1[j]==str2[i])
-				arr[i][j]=1;//printf("1\t");
+				arr[i][j]=1;
 			else
-				arr[i][j]=0;//printf("0\t");
+				arr[i][j]=0;
 		}
 	}
 
