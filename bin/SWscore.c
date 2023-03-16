@@ -19,25 +19,22 @@ int main(int argc,char* argv[])
 	
 	int arr[cnum2][cnum1];
 
-	//for(int u=0;u<100000;u++){
-	for(int i=0;i<cnum2;i++){ //Rows
-		for(int j=0;j<cnum1;j++){ //Cols
+	for(int i=0;i<cnum2;i++){
+		for(int j=0;j<cnum1;j++){
 			if(str1[j]==str2[i])
 				arr[i][j]=1;//printf("1\t");
 			else
 				arr[i][j]=0;//printf("0\t");
-		
 		}
 	}
-
 
 	int c;
 	int ul;
 	int l;
 	int u;
 
-	for(int i=1;i<cnum2;i++){ //Rows
-		for(int j=1;j<cnum1;j++){ //Cols
+	for(int i=1;i<cnum2;i++){
+		for(int j=1;j<cnum1;j++){
 			
 			c=arr[i][j];
 			ul=arr[i-1][j-1];
@@ -64,10 +61,8 @@ int main(int argc,char* argv[])
 			if(arr[i][j]<0) arr[i][j] = 0;
 			
 			if(arr[i][j]>val) val = arr[i][j];
-			
-	 			
+				
 		}
-		
 	}
 
 	if(cnum1 < cnum2) 
@@ -77,8 +72,6 @@ int main(int argc,char* argv[])
 
 	printf("%s\t", str1);
 	printf("%f\n", SWpercent);
-
-	//}
 
 	return 0;
 }
