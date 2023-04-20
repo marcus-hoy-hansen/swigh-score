@@ -4,6 +4,7 @@
 echo "Compiling C code"
 gcc bin/SWscore.c -o bin/SWscore
 gcc bin/vj.c -o bin/vj
+gcc bin/vj2.c -o bin/vj2
 
 echo "Changing permissions of executables"
 chmod u+x bin/SWscore
