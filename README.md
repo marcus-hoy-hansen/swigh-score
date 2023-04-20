@@ -30,9 +30,11 @@ Compare a clonotype sequence to control sequence spiked in known concentrations 
 
 ./swigh-compare [filename.fastq] [number of threads] [clonotype DNA string] [spike-in control DNA string]
 
-To assign a Variable and Joining gene to the most frequent sequences (top 10) with a clonotype similarity threshold of 95%:
+To assign a Variable (V) and Joining (J) gene to the most frequent sequences (top 10) with a clonotype similarity threshold of 95%:
 
 ./swigh-clonotype [filename.fastq.out]
+
+Note that this tool is at the experimental prototype stage and may in some cases misclassify the polymorphism, while assigning the correct V and J. The tool is also suitable for the more error-prone Oxford Nanopore long-read sequencing.
 
 ## Examples
 ./swigh-score test.fastq 31 CTTCTGGATACACCTTCACTAGTTATTCAATACATTGGGTGCGCCAGGCCCCCGGACAAGGGCTTGAGTGGATGGGATGGATCAACACTGGGAATGGTGACACAAGATATTCACAGAAATTCCAGGGCAGAGTCACCTTTACGAGGGACACATCCGCGACCACAGCCTACATGGAGCTGAGCAGCCTGACATCTGAAGACACGGCTGTATTTTATTGTGCGAGAGGGTTACGATTGCAAGAGGGATTATTATATGGGGATGACTTCTTTGACTACTGGGGCCAGGGATCCCG
