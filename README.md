@@ -39,9 +39,13 @@ Compare a clonotype sequence to control sequence spiked in known concentrations 
 ## Updating local version
 You may wish to update your local version, e.g., using the following command (warning, overwrites any changes):
 
+
 cd swigh-score
+
 git stash
+
 git pull origin main
+
 
 
 
