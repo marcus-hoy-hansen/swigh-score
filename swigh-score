@@ -27,7 +27,7 @@ wait
 
 echo "concatenating output..."
 cat tmp/split.stack.*.out.txt | sort > tmp/$1".SWscore.out" 
-join tmp/$1".SWscore.out" tmp/counts.txt | sort -k2nr > $4$1".out"
+join tmp/$1".SWscore.out" tmp/counts.txt | sort -k2nr -k6nr > $4$1".out"
 
 rm -r tmp
 
