@@ -1,0 +1,22 @@
+#!/bin/bash
+
+vgenes="bin/igmt-vgene-sequence.txt"
+vgenenames="bin/igmt-vgene-name.txt"
+
+jgenes="bin/igmt-jgene-sequence.txt"
+jgenenames="bin/igmt-jgene-name.txt"
+
+
+if [ -z "$2" ]
+then
+	n=1
+else
+	n=$2
+fi
+echo -e "Usage: ./swigh-clonotype-sequence [DNA sequence] [optional number of shown matches]"
+echo -e "\n# Highest similarity matches to V &  J genes are shown (tabulated output)"
+echo -e "IGHV gene\tSequence\tSimilarity\tSmith-Waterman score\tAligned bases\tSwigh-score"
+bin/swigh-clonotype2flatfiles $1 $vgenes | paste $vgenenames - | sort -k6nr | head -n $n
+
+echo -e "\nIGHJ gene\tSequence\tSimilarity\tSmith-Waterman score\tAligned bases\tSwigh-score"
+bin/swigh-clonotype2flatfiles $1 $jgenes | paste $jgenenames - | sort -k6nr | head -n $n

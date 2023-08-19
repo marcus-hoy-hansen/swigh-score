@@ -1,0 +1,56 @@
+#!/bin/bash
+
+rm -rf tmp
+mkdir tmp
+
+
+if [ -z "$2" ]
+then
+        threads=15
+else
+        threads=$2
+fi
+
+if [ -z "$3" ]
+then
+        gene="vgene"
+else
+        gene=$3
+fi
+
+genes="bin/igmt-"$gene"-sequence.txt"
+genenames="bin/igmt-"$gene"-name.txt"
+file=${1%.fastq}
+
+echo "Usage: ./swigh-clonotype-random [file.fastq] [threads] [vgene/jgene]"
+echo "Input file: "$1 
+echo -e "Randomly Subsampling 1000 sequences for clonotyping\n"
+
+cat $1 | awk 'NR%4==2 {print}'| shuf -n 1000 > tmp/seq.txt
+
+n=$(< tmp/seq.txt wc -l)
+lines=$(awk -v num=$n -v threads=$threads 'BEGIN {print int(num/threads)}')
+
+echo "Splitting fastq file into chunks of $lines lines"
+split -l $lines tmp/seq.txt tmp/split.seq.stack.
+
+Files="split.seq.stack.*"
+
+for f in 'tmp/'$Files
+do
+	while IFS= read -r line; do
+    		#bin/SWscore $1 $line
+		bin/swigh-clonotype2flatfiles $line $genes | paste $genenames - | sort -k6nr | head -n 1 >> $f.out.txt
+	done < $f &
+done
+wait
+
+echo "concatenating output..."
+cat tmp/split.seq.stack*.out.txt > $file"."$gene".txt"
+
+echo -e "\nCounts\tGene"
+cat $file"."$gene".txt" |awk '{print $1}' | sort | uniq -c | awk '{print $1"\t"$2}' | sort -k1nr
+
+rm -r tmp
+
+

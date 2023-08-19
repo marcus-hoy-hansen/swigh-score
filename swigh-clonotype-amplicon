@@ -1,0 +1,18 @@
+#!/bin/bash
+
+lines=$(< $1 wc -l)
+
+if [ -z "$2" ]
+then
+        n=$lines
+else
+        n=$(($2*4))
+fi
+
+echo "Finding likely V and J-gene usage of most recurrent sequence (amplicon sequencing only)"
+echo "Using "$n" lines in the fastq file ("$(($n/4))" reads) for the analysis..."
+head -n $n $1 | awk 'NR%4==2 {print}'| sort | uniq -c | tr -s " " "\t" | awk '{ print $2"\t"$1}' | sort -k2nr | head -n 1 | cut -f1 | ./swigh-clonotype-sequence $(</dev/stdin)
+
+
+
+

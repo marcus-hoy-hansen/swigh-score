@@ -1,0 +1,46 @@
+#!/bin/bash
+
+
+ClonalSequences () {
+	echo $(cat $1 |awk '$2>='$2' {print $6}'| paste -sd+ | bc)
+}
+
+n=$(cat $1 |awk '{print $6}'| paste -sd+ | bc)
+
+echo -e "\nUsage: ./swigh-report [file.out from swigh-score)\n"
+
+echo -e "Highest scoring match:"
+line=$(head -n 1 $1)
+
+echo -e "Sequence\tSimilarity\tSmith-Waterman score\tAligned bases\tSwigh-score\tNumber of identical sequences"
+echo $line
+sequence=$(echo $line | awk '{print $1}')
+
+echo -e "\nSimilarity\tSequences\tFraction (of $n sequences)"
+
+WriteLine () {
+	num=$(ClonalSequences $1 $2)
+	frac=$(bc <<< 'scale=2; '$num'/'$n)
+	echo -e "$2\t\t$num\t\t$frac"
+}
+
+WriteLine $1 1.00
+WriteLine $1 0.99
+WriteLine $1 0.98
+WriteLine $1 0.97
+WriteLine $1 0.96
+WriteLine $1 0.95
+WriteLine $1 0.90
+WriteLine $1 0.85
+WriteLine $1 0.80
+WriteLine $1 0.70
+WriteLine $1 0.60
+WriteLine $1 0.50
+WriteLine $1 0.40
+WriteLine $1 0.30
+WriteLine $1 0.20
+WriteLine $1 0.10
+WriteLine $1 0.00
+
+echo -e "\nClonotype of highest scoring sequence:\n"
+./swigh-clonotype-sequence $sequence
