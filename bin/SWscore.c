@@ -8,7 +8,7 @@ int main(int argc,char* argv[])
 	int match = 1;
 	int val = 0;
 
-	int cnum1 = strlen(argv[1]); //cnum1
+	int cnum1 = strlen(argv[1]);
 	char str1[cnum1+10];
 	int cnum2 = strlen(argv[2]);
 	char str2[cnum2+10];
