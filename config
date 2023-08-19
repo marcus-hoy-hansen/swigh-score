@@ -11,6 +11,7 @@ chmod u+x swigh-clonotype-random
 chmod u+x swigh-clonotype-sequence
 chmod u+x swigh-clonotype-amplicon
 chmod u+x bin/SWscoresequences.sh
-chmod u+x swigh-report.sh
+chmod u+x bin/swigh-clonotype2flatfiles
+chmod u+x swigh-report
 
 echo "Finished configuration"
