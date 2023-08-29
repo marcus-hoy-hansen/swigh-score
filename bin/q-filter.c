@@ -14,10 +14,9 @@ int main(int argc,char* argv[]) {
 	FILE *fastqfile;
 	int len = 10000;
 	char buff[len], currentchar, qual[len], dna[len], id[len];
+	char fastqline[4][len];
 	int lines = 0;
 	fastqfile = fopen(argv[1], "r");
-	int i = 0;
-	int u;
 	double score = 0.00;
 	int mean;
 	
@@ -28,24 +27,19 @@ int main(int argc,char* argv[]) {
 	
 	}	
 	rewind(fastqfile);
-	
-	while (i <= lines/4) {
-		i++;
-		fgets(buff, len, fastqfile);
-		strcpy(id, buff);
-		fgets(buff, len, fastqfile);
-		strcpy(dna, buff);
-		fgets(buff, len, fastqfile);
-		fgets(buff, len, fastqfile);
-		strcpy(qual, buff);
-		score = 0;
-		for (u = 0; u < strlen(buff); u++) {
-			score += (buff[u]-33);
+	for (int i = 0; i < lines/4; i++) {
+
+		for (int j=1; j <= 4; ++j) {
+			fgets(buff, len, fastqfile);
+                	strcpy(fastqline[j], buff);
 		}
+		
+		score = 0;
+		for (int u = 0; u < strlen(buff); u++) score += (buff[u]-33);
 	
 		mean = (score/strlen(buff));
-		if(mean>=lowerqual && strlen(dna)>=lowerlength) {
-			printf("%s%s+\n%s", id, dna, qual);
+		if(mean>=lowerqual && strlen(fastqline[2])>=lowerlength) {
+			printf("%s%s+\n%s", fastqline[1], fastqline[2], fastqline[4]);
 		}
 	}
 	fclose(fastqfile);
