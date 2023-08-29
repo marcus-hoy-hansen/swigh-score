@@ -13,7 +13,7 @@ int main(int argc,char* argv[]) {
 
 	FILE *fastqfile;
 	int len = 10000;
-	char buff[len], currentchar, qual[len], dna[len], plus[len], id[len];
+	char buff[len], currentchar, qual[len], dna[len], id[len];
 	int lines = 0;
 	fastqfile = fopen(argv[1], "r");
 	int i = 0;
