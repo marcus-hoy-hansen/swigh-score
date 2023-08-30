@@ -19,7 +19,7 @@ int main(int argc,char* argv[]) {
 	char fastqline[4][len];
 	int lines = 0;
 	fastqfile = fopen(argv[1], "r");
-	double score = 0.000000;
+	double score = 0.00;
 	double mean;
 	
 	while(!feof(fastqfile)) {
