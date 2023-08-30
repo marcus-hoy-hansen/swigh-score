@@ -73,13 +73,7 @@ int main(int argc, char *argv[]) {
 
     // Perform traceback
     for (int i = val; i > 0; i--) {
-        if (str1[currentCol] == str2[currentRow]) {
-            match++;
-            alignmentMatch[alignPos] = '|';
-            alignment1[alignPos] = str1[currentCol];
-            alignment2[alignPos] = str2[currentRow];
-            alignPos++;
-        }
+        if (str1[currentCol] == str2[currentRow]) match++;
 
         upperLeft = scoreMatrix[currentRow - 1][currentCol - 1];
         left = scoreMatrix[currentRow][currentCol - 1];
@@ -97,11 +91,6 @@ int main(int argc, char *argv[]) {
 
         i = scoreMatrix[currentRow][currentCol];
     }
-
-    // Null-terminate alignment strings
-    alignmentMatch[alignPos] = '\0';
-    alignment1[alignPos] = '\0';
-    alignment2[alignPos] = '\0';
 
     // Calculate SWpercent
     SWpercent = (double) val / (double) match;
