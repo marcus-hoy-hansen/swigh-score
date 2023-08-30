@@ -3,7 +3,7 @@
 
 echo "Compiling C code"
 gcc bin/SWscore.c -o bin/SWscore
-gcc bin/q-filter.c -o quality-filter
+gcc bin/q-filter.c -o quality-filter -lm
 
 echo "Changing permissions of executables"
 chmod u+x swigh-score
