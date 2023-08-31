@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# USAGE: ./swigh-score [file.fastq] [threads] [sequence] [optional label] 
+# USAGE: ./swigh-score [file.fastq] [processes] [sequence] [optional label] 
 # STOPPING RUNAWAY PROCESS: killall -9 swigh-score
 
 rm -rf tmp
@@ -11,7 +11,7 @@ awk 'NR%4==2 {print}' $1 | sort | uniq -c | tr -s " " "\t" | awk '{ print $2"\t"
 cut -f1 tmp/counts.txt > tmp/stack.fastq
 
 n=$(< tmp/counts.txt wc -l)
-lines=$(awk -v num=$n -v threads=$2 'BEGIN {print int(num/threads)}')
+lines=$(awk -v num=$n -v processes=$2 'BEGIN {print int(num/processes)}')
 
 echo "Splitting fastq file into chunks of $lines lines"
 split -l $lines tmp/stack.fastq tmp/split.stack.
