@@ -1,32 +1,31 @@
 #!/bin/bash
 
-
-ClonalSequences () {
-	echo $(cat $1 |awk '$2>='$2' {print $6}'| paste -sd+ | bc)
+ClonalSequences() {
+	awk -v threshold="$2" '$2 >= threshold {sum += $6} END {print sum}' "$1"
 }
 
-n=$(cat $1 |awk '{print $6}'| paste -sd+ | bc)
+input_file="$1"
+total_sequences=$(awk '{sum += $6} END {print sum}' "$input_file")
 
 echo -e "\nUsage: ./swigh-report [file.out from swigh-score)\n"
 
 echo -e "Highest scoring match:"
 read -r line < "$input_file"
-
 echo -e "Sequence\tSimilarity\tSmith-Waterman score\tAligned bases\tSwigh-score\tNumber of identical sequences"
-echo $line
-sequence=$(echo $line | awk '{print $1}')
+echo "$line"
+sequence=$(echo "$line" | awk '{print $1}')
 
-echo -e "\nSimilarity\tSequences\tFraction (of $n sequences)"
+echo -e "\nSimilarity\tSequences\tFraction (of $total_sequences sequences)"
 
-WriteLine () {
-	num=$(ClonalSequences $1 $2)
-	frac=$(bc <<< 'scale=2; '$num'/'$n)
+WriteLine() {
+	num=$(ClonalSequences "$1" "$2")
+	frac=$(bc <<< "scale=2; $num/$total_sequences")
 	echo -e "$2\t\t$num\t\t$frac"
 }
 
 for similarity in 1.00 0.99 0.98 0.97 0.96 0.95 0.90 0.85 0.80 0.70 0.60 0.50 0.40 0.30 0.20 0.10 0.00; do
-    WriteLine "$input_file" "$similarity"
+	WriteLine "$input_file" "$similarity"
 done
 
 echo -e "\nClonotype of highest scoring sequence:\n"
-./swigh-clonotype-sequence $sequence
+./swigh-clonotype-sequence "$sequence"
