@@ -12,7 +12,7 @@ int main(int argc, char *argv[]) {
 	strcpy(str2, argv[2]);
 	double SWpercent, swighscore;
 	
-	// Create and initialize the scoring matrix
+	// 1. Create and initialize the scoring matrix
 	int scoreMatrix[len2][len1];
 	for (int i = 0; i < len2; i++) {
 		for (int j = 0; j < len1; j++) {
@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	// Initialize variables for traceback
+	// 2. Initialize variables for traceback
 	int currentCell, upperLeft, left, up;
 	int maxRow, maxCol;
 
@@ -33,10 +33,13 @@ int main(int argc, char *argv[]) {
 			up = scoreMatrix[i - 1][j];
 
 			// Update current cell based on traceback rules
-		scoreMatrix[i][j] =
-			(currentCell > 0 && (upperLeft + 1 > left - 1) && (upperLeft + 1 > up - 1))
+			scoreMatrix[i][j] = (currentCell > 0 
+				&& (upperLeft + 1 > left - 1) 
+				&& (upperLeft + 1 > up - 1))
 			? upperLeft + 1
-			: ((currentCell == 0 && (upperLeft + 1 > left - 1) && (upperLeft + 1 > up - 1))
+			: ((currentCell == 0 
+				&& (upperLeft + 1 > left - 1) 
+				&& (upperLeft + 1 > up - 1))
 			? upperLeft - 1
 			: ((left - 1 > up - 1)? left - 1
 			: ((up - 1 > left - 1)? up - 1: 0)));
@@ -54,7 +57,7 @@ int main(int argc, char *argv[]) {
 	int currentRow = maxRow;
 	int currentCol = maxCol;
 
-	// Perform traceback
+	// 3. Perform traceback
 	for (int i = val; i > 0; i--) {
 		if (str1[currentCol] == str2[currentRow]) match++;
 
@@ -75,11 +78,10 @@ int main(int argc, char *argv[]) {
 		i = scoreMatrix[currentRow][currentCol];
 	}
 
-	// Calculate SWpercent
-	SWpercent = (double) val / (double) match;
-	swighscore = SWpercent * ((double) val + (double) match);
+	// 4. Calculate SWpercent and print out results
+	SWpercent = (double)val / (double)match;
+	swighscore = SWpercent * ((double)val + (double)match);
 
-	// Print results
 	printf("%s\t%f\t%i\t%i\t%f\n", str1, SWpercent, val, match, swighscore);
 	return 0;
 }
