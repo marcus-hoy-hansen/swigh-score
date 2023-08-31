@@ -10,7 +10,7 @@ n=$(cat $1 |awk '{print $6}'| paste -sd+ | bc)
 echo -e "\nUsage: ./swigh-report [file.out from swigh-score)\n"
 
 echo -e "Highest scoring match:"
-line=$(head -n 1 $1)
+read -r line < "$input_file"
 
 echo -e "Sequence\tSimilarity\tSmith-Waterman score\tAligned bases\tSwigh-score\tNumber of identical sequences"
 echo $line
@@ -24,23 +24,9 @@ WriteLine () {
 	echo -e "$2\t\t$num\t\t$frac"
 }
 
-WriteLine $1 1.00
-WriteLine $1 0.99
-WriteLine $1 0.98
-WriteLine $1 0.97
-WriteLine $1 0.96
-WriteLine $1 0.95
-WriteLine $1 0.90
-WriteLine $1 0.85
-WriteLine $1 0.80
-WriteLine $1 0.70
-WriteLine $1 0.60
-WriteLine $1 0.50
-WriteLine $1 0.40
-WriteLine $1 0.30
-WriteLine $1 0.20
-WriteLine $1 0.10
-WriteLine $1 0.00
+for similarity in 1.00 0.99 0.98 0.97 0.96 0.95 0.90 0.85 0.80 0.70 0.60 0.50 0.40 0.30 0.20 0.10 0.00; do
+    WriteLine "$input_file" "$similarity"
+done
 
 echo -e "\nClonotype of highest scoring sequence:\n"
 ./swigh-clonotype-sequence $sequence
