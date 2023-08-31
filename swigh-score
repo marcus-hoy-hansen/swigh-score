@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # USAGE: ./swigh-score [file.fastq] [processes] [sequence] [optional label] 
 # STOPPING RUNAWAY PROCESS: killall -9 swigh-score
 
@@ -26,8 +25,9 @@ done
 
 wait
 
-echo "concatenating output..."
+echo "Concatenating output..."
 cat tmp/split.stack.*.out.txt | sort > tmp/$1".SWscore.out" 
 join tmp/$1".SWscore.out" tmp/counts.txt | sort -k2nr -k6nr > $4$1".out"
 
+# Clean up temporary files
 rm -r tmp
