@@ -6,9 +6,9 @@ mkdir tmp
 
 if [ -z "$2" ]
 then
-        threads=15
+        processes=15
 else
-        threads=$2
+        processes=$2
 fi
 
 if [ -z "$3" ]
@@ -22,14 +22,14 @@ genes="bin/igmt-"$gene"-sequence.txt"
 genenames="bin/igmt-"$gene"-name.txt"
 file=${1%.fastq}
 
-echo "Usage: ./swigh-clonotype-random [file.fastq] [threads] [vgene/jgene]"
+echo "Usage: ./swigh-clonotype-random [file.fastq] [processes] [vgene/jgene]"
 echo "Input file: "$1 
 echo -e "Randomly Subsampling 1000 sequences for clonotyping\n"
 
 cat $1 | awk 'NR%4==2 {print}'| shuf -n 1000 > tmp/seq.txt
 
 n=$(< tmp/seq.txt wc -l)
-lines=$(awk -v num=$n -v threads=$threads 'BEGIN {print int(num/threads)}')
+lines=$(awk -v num=$n -v processes=$processes 'BEGIN {print int(num/processes)}')
 
 echo "Splitting fastq file into chunks of $lines lines"
 split -l $lines tmp/seq.txt tmp/split.seq.stack.
