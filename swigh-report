@@ -12,7 +12,7 @@ echo -e "\nUsage: ./swigh-report [file.out from swigh-score)\n"
 echo -e "Highest scoring match:"
 read -r line < "$input_file"
 echo -e "Sequence\tSimilarity\tSmith-Waterman score\tAligned bases\tSwigh-score\tNumber of identical sequences"
-echo "$line"
+echo "$line" | tr -s ' ' '\t'
 sequence=$(echo "$line" | awk '{print $1}')
 
 echo -e "\nSimilarity\tSequences\tFraction (of $total_sequences sequences)"
