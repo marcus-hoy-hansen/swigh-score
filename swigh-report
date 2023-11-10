@@ -19,7 +19,7 @@ echo -e "\nSimilarity\tSequences\tFraction (of $total_sequences sequences)"
 
 WriteLine() {
 	num=$(ClonalSequences "$1" "$2")
-	frac=$(bc <<< "scale=2; $num/$total_sequences")
+	frac=$(bc <<< "scale=6; $num/$total_sequences")
 	echo -e "$2\t\t$num\t\t$frac"
 }
 
