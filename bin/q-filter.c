@@ -41,17 +41,16 @@ int main(int argc,char* argv[]) {
 		bufflen = strlen(buff)-1;
 
 		// 3. Calculate score and mean based on runmode
-		if(runmode==1) {
-			for (int u = 0; u < bufflen; u++) score += (buff[u]-33);
-			mean = -1*(score/bufflen)/10;
-			mean = pow(10,mean);
-
-		} else {
+		if(runmode==2) {
 			for (int u = 0; u < bufflen; u++) {
 				score = score+pow(10,-1*(double)(buff[u]-33)/10);
 			}	
-			
 			mean = (score/(double)bufflen);
+
+		} else {
+			for (int u = 0; u < bufflen; u++) score += (buff[u]-33);
+			mean = -1*(score/bufflen)/10;
+			mean = pow(10,mean);
 		}
 		
 		// 4. Check conditions and print if satisfied
