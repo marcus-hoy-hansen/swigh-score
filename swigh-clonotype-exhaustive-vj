@@ -137,7 +137,33 @@ process_one() {
 }
 export -f process_one
 
-cat "$tmpdir/jobs.numbered.tsv" | xargs -I{} -P "$workers" bash -lc 'process_one "$@"' _ {}
+monitor_progress() {
+  local total=$1
+  local start_ts=$2
+  local done percent elapsed
+
+  while true; do
+    done=$(find "$out_dir" -maxdepth 1 -type f -name 'out.*' | wc -l)
+    (( done > total )) && done=$total
+    percent=$(( done * 100 / total ))
+    elapsed=$(( $(date +%s) - start_ts ))
+    printf '[progress] %d/%d (%d%%) unique sequences processed after %ds\n' "$done" "$total" "$percent" "$elapsed"
+
+    if (( done >= total )); then
+      break
+    fi
+    sleep 10
+  done
+}
+
+start_ts=$(date +%s)
+cat "$tmpdir/jobs.numbered.tsv" | xargs -I{} -P "$workers" bash -lc 'process_one "$@"' _ {} &
+xargs_pid=$!
+monitor_progress "$n_seq" "$start_ts" &
+monitor_pid=$!
+
+wait "$xargs_pid"
+wait "$monitor_pid"
 
 assignments_raw="$tmpdir/assignments.raw.tsv"
 find "$out_dir" -type f -name 'out.*' | sort -V | xargs cat > "$assignments_raw"

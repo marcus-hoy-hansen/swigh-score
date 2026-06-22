@@ -72,6 +72,7 @@ For the IGL paired-end pipeline you can tune the merged-read length cutoff and f
 ./swigh-pipeline --input test10k.fastq --paired-end false
 ./swigh-pipeline --sample 22-0453-00_S4
 ./swigh-pipeline --input 23-0492-s1_S2_L001_R1_001.fastq
+./swigh-pipeline --sample 23-0492-s1_S2 --workers 48
 
 Paired-end notes:
 - `--sample <base>` looks for either `<base>_L001_R1_001.fastq.gz` / `<base>_L001_R2_001.fastq.gz` or the uncompressed `.fastq` equivalents.
@@ -82,6 +83,7 @@ Runtime notes:
 - If `apptainer` is available and the configured SIF files exist, the pipeline uses containers.
 - Otherwise it falls back to native tools.
 - If native tools are missing, the scripts attempt to install `fastqc`, `fastp`, and `bbmap` with `sudo apt-get update` and `sudo apt-get install`.
+- `--workers N` controls the parallel outer worker count used by `swigh-clonotype-exhaustive-vj`. `SW_THREADS` remains fixed at 1 per sequence.
 
 ## Updating local version
 You may wish to update your local version, e.g., using the following command (warning, overwrites any changes):
@@ -92,4 +94,3 @@ cd swigh-score
 git stash
 
 git pull origin main
-

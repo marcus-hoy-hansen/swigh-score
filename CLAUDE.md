@@ -89,10 +89,12 @@ cd <dir-containing-fastqs>
 /path/to/swigh-pipeline --sample 22-0453-00_S4
 /path/to/swigh-pipeline --input 23-0492-s1_S2_L001_R1_001.fastq
 /path/to/swigh-pipeline --input test10k.fastq --paired-end false
+/path/to/swigh-pipeline --sample 23-0492-s1_S2 --workers 48
 ```
 
 Paired-end `--sample` accepts either `.fastq.gz` or `.fastq` files named `<base>_L001_R1_001...` and `<base>_L001_R2_001...`.
 Paired-end `--input` expects the R1 filename to contain `_R1_`; R2 is inferred by replacing that token with `_R2_`. Output goes to `$PWD/<base>/`.
+`--workers N` controls the parallel outer worker count for exhaustive clonotyping. `SW_THREADS` is intentionally fixed at 1 in the pipeline wrappers.
 
 **BBmerge must run with `threads=1`** — its multithreaded FASTQ reader has a race condition that drops read pairs silently. fastp intermediates are written uncompressed (`.fastq`) for the same reason.
 
