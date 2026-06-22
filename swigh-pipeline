@@ -1,0 +1,315 @@
+#!/bin/bash
+set -euo pipefail
+
+# ── Paths ────────────────────────────────────────────────────────────────────
+SWIGH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BBTOOLS_SIF="${SWIGH_DIR}/2026_05_27/bbtools.sif"
+FASTP_SIF="${SWIGH_DIR}/2026_05_27/fastp.sif"
+FASTQC_SIF="${SWIGH_DIR}/2026_05_27/fastqc2.sif"
+WORKERS=24
+SW_THREADS=1
+MIN_LENGTH=200
+QUALITY_THRESHOLD=15
+LOCUS=igh
+CLONAL_SEQ=""
+PAIRED_END=true
+SINGLE_END_FQ=""
+
+usage() {
+  cat <<'EOF'
+Usage:
+  swigh-pipeline --sample BASE [--locus LOCUS] [--length N] [--quality Q]
+                 [--clonal-sequence SEQ]
+                 [--single-end FILE]
+
+  --sample BASE   Sample base name (e.g. 22-0453-00_S4).
+                  Paired-end mode (default): expects
+                    <base>_L001_R1_001.fastq.gz and
+                    <base>_L001_R2_001.fastq.gz in the current directory.
+
+Options:
+  --sample BASE           Sample base name for output naming. Required for paired-end;
+                          optional for single-end (derived from --input filename if omitted).
+  --locus LOCUS           Immunoglobulin locus: igh, igk, or igl [default: igh]
+  --length N              Minimum read length to retain after filtering [default: 200]
+  --quality Q             fastp qualified quality phred threshold [default: 15]
+  --clonal-sequence SEQ   DNA sequence of the clonotype of interest.
+                          Runs swigh-score + swigh-report (similarity, burden,
+                          clonotype). Background landscape report always runs.
+  --paired-end true|false Use paired-end R1/R2 input [default: true].
+                          Set false for single-end mode; requires --input.
+  --input FILE            Single-end fastq.gz input (required when --paired-end false).
+
+Output (paired-end, always):
+  <base>/FASTQC/                           FastQC reports (raw reads)
+  <base>/FASTQC_FILTERED/                  FastQC report (filtered reads)
+  <base>/<base>_fastp.html/json            fastp trimming report
+  <base>/<base>.unmerged_R1/R2.fastq       unmerged reads
+  <base>/<base>.merged.fq                  fastp merged reads
+  <base>/<base>.merged.minN.fq             merged reads >=N bp
+  <base>/<base>.<locus>.vj.exhaustive{,.summary}.tsv
+  <base>/<base>.<locus>.vj.exhaustive.html
+
+Output (single-end, always):
+  <base>/FASTQC/                           FastQC report (raw reads)
+  <base>/FASTQC_FILTERED/                  FastQC report (filtered reads)
+  <base>/<base>_fastp.html/json            fastp trimming report
+  <base>/<base>.trimmed.fq                 fastp quality-trimmed reads
+  <base>/<base>.trimmed.minN.fq            trimmed reads >=N bp
+  <base>/<base>.<locus>.vj.exhaustive{,.summary}.tsv
+  <base>/<base>.<locus>.vj.exhaustive.html
+
+Output (with --clonal-sequence):
+  <base>/<base>.*.minN.fq.out              swigh-score output (per-read SW scores)
+  <base>/<base>.clonal.report.txt          swigh-report: similarity histogram + clonotype
+EOF
+  exit 1
+}
+
+is_non_negative_integer() {
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+BASE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --sample)
+      [[ $# -ge 2 ]] || usage
+      BASE="$2"
+      shift 2
+      ;;
+    --locus)
+      [[ $# -ge 2 ]] || usage
+      LOCUS="$2"
+      shift 2
+      ;;
+    --length)
+      [[ $# -ge 2 ]] || usage
+      MIN_LENGTH="$2"
+      shift 2
+      ;;
+    --quality)
+      [[ $# -ge 2 ]] || usage
+      QUALITY_THRESHOLD="$2"
+      shift 2
+      ;;
+    --clonal-sequence)
+      [[ $# -ge 2 ]] || usage
+      CLONAL_SEQ="$2"
+      shift 2
+      ;;
+    --paired-end)
+      [[ $# -ge 2 ]] || usage
+      case "$2" in
+        true)  PAIRED_END=true ;;
+        false) PAIRED_END=false ;;
+        *) echo "Error: --paired-end must be true or false (got: $2)" >&2; exit 1 ;;
+      esac
+      shift 2
+      ;;
+    --input)
+      [[ $# -ge 2 ]] || usage
+      SINGLE_END_FQ="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      echo "Error: unknown option: $1" >&2
+      usage
+      ;;
+  esac
+done
+
+case "${LOCUS}" in
+  igh|igk|igl) ;;
+  *) echo "Error: --locus must be igh, igk, or igl (got: ${LOCUS})" >&2; exit 1 ;;
+esac
+
+is_non_negative_integer "${MIN_LENGTH}"        || { echo "Error: --length must be a non-negative integer" >&2; exit 1; }
+is_non_negative_integer "${QUALITY_THRESHOLD}" || { echo "Error: --quality must be a non-negative integer" >&2; exit 1; }
+
+if [[ "${PAIRED_END}" == false ]]; then
+  [[ -n "${SINGLE_END_FQ}" ]] || { echo "Error: --input FILE is required when --paired-end false" >&2; exit 1; }
+  # Derive sample name from input filename if --sample not given
+  if [[ -z "${BASE}" ]]; then
+    BASE="$(basename "${SINGLE_END_FQ}")"
+    BASE="${BASE%.fastq.gz}"; BASE="${BASE%.fq.gz}"; BASE="${BASE%.fastq}"; BASE="${BASE%.fq}"
+    echo "Sample name derived from input: ${BASE}"
+  fi
+else
+  [[ -z "${SINGLE_END_FQ}" ]] || { echo "Error: --input is only valid with --paired-end false" >&2; exit 1; }
+  [[ -n "${BASE}" ]] || { echo "Error: --sample is required for paired-end mode" >&2; usage; }
+fi
+
+WORKDIR="${PWD}"
+OUTDIR="${WORKDIR}/${BASE}"
+mkdir -p "${OUTDIR}/FASTQC"
+mkdir -p "${OUTDIR}/FASTQC_FILTERED"
+
+BACKGROUND_TSV="${OUTDIR}/${BASE}.${LOCUS}.vj.exhaustive.tsv"
+BACKGROUND_HTML="${OUTDIR}/${BASE}.${LOCUS}.vj.exhaustive.html"
+FASTP_JSON="${OUTDIR}/${BASE}_fastp.json"
+
+TOTAL_STEPS=6
+[[ -n "${CLONAL_SEQ}" ]] && TOTAL_STEPS=8
+STEP=0
+step() { STEP=$((STEP+1)); echo "[${STEP}/${TOTAL_STEPS}] $*"; }
+
+if [[ "${PAIRED_END}" == false ]]; then
+  # ════════════════════════════════════════════════════════════════════════════
+  # SINGLE-END MODE
+  # ════════════════════════════════════════════════════════════════════════════
+  [[ -f "${SINGLE_END_FQ}" ]] || { echo "Error: not found: ${SINGLE_END_FQ}" >&2; exit 1; }
+
+  NORM_FQ="${OUTDIR}/${BASE}.norm.fq"
+  TRIMMED="${OUTDIR}/${BASE}.trimmed.fq"
+  READS_FILT="${OUTDIR}/${BASE}.trimmed.min${MIN_LENGTH}.fq"
+
+  if [[ -f "${READS_FILT}" && -f "${FASTP_JSON}" ]]; then
+    step "Reusing existing single-end filtered reads"
+    echo "  Found: ${READS_FILT}"
+  else
+    # Normalise FASTQ: ensure every ID line (lines 1,5,9,…) starts with '@'.
+    # Nanopore files occasionally have IDs like "12345@uuid …" instead of "@uuid".
+    awk 'NR%4==1 && substr($0,1,1)!="@" {print "@"$0; next} {print}' \
+      "${SINGLE_END_FQ}" > "${NORM_FQ}"
+
+    # ── Step 1: FastQC on raw reads ─────────────────────────────────────────────
+    step "FastQC — raw reads (single-end)"
+    apptainer exec --env "_JAVA_OPTIONS=-Xmx8g" "${FASTQC_SIF}" \
+      fastqc "${NORM_FQ}" -o "${OUTDIR}/FASTQC" --threads 2 --memory 4096
+
+    # ── Step 2: Adapter trimming and quality filtering (fastp, no merge) ────────
+    step "fastp — trim and filter (single-end)"
+    apptainer exec "${FASTP_SIF}" fastp \
+      -i "${NORM_FQ}" \
+      -o "${TRIMMED}" \
+      --qualified_quality_phred "${QUALITY_THRESHOLD}" \
+      -h "${OUTDIR}/${BASE}_fastp.html" \
+      -j "${FASTP_JSON}" \
+      --thread 8
+
+    # ── Step 3: Remove reads shorter than requested length ──────────────────────
+    step "reformat.sh — filter reads < ${MIN_LENGTH} bp"
+    apptainer exec "${BBTOOLS_SIF}" reformat.sh \
+      in="${TRIMMED}" out="${READS_FILT}" minlength="${MIN_LENGTH}"
+
+    # ── Step 4: FastQC on filtered reads ────────────────────────────────────────
+    step "FastQC — filtered reads"
+    apptainer exec --env "_JAVA_OPTIONS=-Xmx8g" "${FASTQC_SIF}" \
+      fastqc "${READS_FILT}" -o "${OUTDIR}/FASTQC_FILTERED" --threads 2 --memory 4096
+  fi
+
+else
+  # ════════════════════════════════════════════════════════════════════════════
+  # PAIRED-END MODE
+  # ════════════════════════════════════════════════════════════════════════════
+  R1="${WORKDIR}/${BASE}_L001_R1_001.fastq.gz"
+  R2="${WORKDIR}/${BASE}_L001_R2_001.fastq.gz"
+  [[ -f "$R1" ]] || { echo "Error: not found: $R1" >&2; exit 1; }
+  [[ -f "$R2" ]] || { echo "Error: not found: $R2" >&2; exit 1; }
+
+  UNMERGED_R1="${OUTDIR}/${BASE}.unmerged_R1.fastq"
+  UNMERGED_R2="${OUTDIR}/${BASE}.unmerged_R2.fastq"
+  MERGED="${OUTDIR}/${BASE}.merged.fq"
+  READS_FILT="${OUTDIR}/${BASE}.merged.min${MIN_LENGTH}.fq"
+
+  if [[ -f "${READS_FILT}" && -f "${FASTP_JSON}" ]]; then
+    step "Reusing existing paired-end filtered reads"
+    echo "  Found: ${READS_FILT}"
+  else
+    # ── Step 1: FastQC on raw reads ─────────────────────────────────────────────
+    step "FastQC — raw reads"
+    apptainer exec "${FASTQC_SIF}" fastqc "$R1" "$R2" -o "${OUTDIR}/FASTQC" --threads 2
+
+    # ── Step 2: Adapter trimming, quality filtering, and read merging (fastp) ──
+    step "fastp — trim, filter, and merge"
+    apptainer exec "${FASTP_SIF}" fastp \
+      -i "$R1" -I "$R2" \
+      --merge \
+      --merged_out "$MERGED" \
+      --out1 "$UNMERGED_R1" --out2 "$UNMERGED_R2" \
+      --detect_adapter_for_pe \
+      --qualified_quality_phred "${QUALITY_THRESHOLD}" \
+      -h "${OUTDIR}/${BASE}_fastp.html" \
+      -j "${FASTP_JSON}" \
+      --thread 8
+
+    # ── Step 3: Remove merged reads shorter than requested length ───────────────
+    step "reformat.sh — filter merged reads < ${MIN_LENGTH} bp"
+    apptainer exec "${BBTOOLS_SIF}" reformat.sh \
+      in="$MERGED" out="$READS_FILT" minlength="${MIN_LENGTH}"
+
+    # ── Step 4: FastQC on merged reads ──────────────────────────────────────────
+    step "FastQC — merged reads"
+    apptainer exec "${FASTQC_SIF}" fastqc "$READS_FILT" -o "${OUTDIR}/FASTQC_FILTERED" --threads 2
+  fi
+fi
+
+# ── Steps 5–6: Clonal characterisation (only when --clonal-sequence given) ───
+if [[ -n "${CLONAL_SEQ}" ]]; then
+  CLONAL_OUT="${OUTDIR}/$(basename "${READS_FILT}").out"
+  CLONAL_REPORT="${OUTDIR}/${BASE}.clonal.report.txt"
+  CLONAL_VJ_PREFIX="${OUTDIR}/${BASE}.clonal."
+  CLONAL_VJ_TSV="${CLONAL_VJ_PREFIX}${LOCUS}.vj.exhaustive.tsv"
+
+  step "swigh-score — align clonal sequence against reads"
+  (cd "${SWIGH_DIR}" && ./swigh-score \
+      -i "${READS_FILT}" \
+      -r "${CLONAL_SEQ}" \
+      -t "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)" \
+      -o "${OUTDIR}/")
+
+  step "swigh-report — similarity histogram + burden + clonotype"
+  (cd "${SWIGH_DIR}" && ./swigh-report \
+      "${CLONAL_OUT}" \
+      --locus "${LOCUS}") \
+    | tee "${CLONAL_REPORT}"
+  echo "  Clonal report saved: ${CLONAL_REPORT}"
+
+  step "swigh-clonotype-exhaustive-vj — direct V/J annotation of clonal sequence"
+  (cd "${SWIGH_DIR}" && ./swigh-clonotype-exhaustive-vj \
+      -r "${CLONAL_SEQ}" \
+      --locus "${LOCUS}" \
+      --workers 1 \
+      -t "${SW_THREADS}" \
+      -o "${CLONAL_VJ_PREFIX}")
+fi
+
+# ── Step 5 or 7: Combined exhaustive V/J assignment (background landscape) ───
+if [[ -f "${BACKGROUND_TSV}" ]]; then
+  step "Reusing existing ${LOCUS^^} background landscape"
+  echo "  Found: ${BACKGROUND_TSV}"
+else
+  step "swigh-clonotype-exhaustive-vj — ${LOCUS^^} background landscape (${WORKERS} workers, ${SW_THREADS} SW thread/seq)"
+  (cd "${SWIGH_DIR}" && ./swigh-clonotype-exhaustive-vj \
+      -i "${READS_FILT}" \
+      --locus "${LOCUS}" \
+      --workers "${WORKERS}" \
+      -t "${SW_THREADS}" \
+      -o "${OUTDIR}/${BASE}.")
+fi
+
+# ── Step 6 or 8: HTML clone report ───────────────────────────────────────────
+step "generate_clone_report.py — HTML landscape report"
+report_args=(
+  "${SWIGH_DIR}/generate_clone_report.py"
+  "${BACKGROUND_TSV}"
+  --sample "${BASE}"
+  --fastp-json "${FASTP_JSON}"
+  --output "${BACKGROUND_HTML}"
+)
+if [[ -n "${CLONAL_SEQ}" ]]; then
+  report_args+=(
+    --clonal-sequence "${CLONAL_SEQ}"
+    --clonal-out "${CLONAL_OUT}"
+    --clonal-vj-tsv "${CLONAL_VJ_TSV}"
+  )
+fi
+python3 "${report_args[@]}"
+
+echo ""
+echo "Done. Results in: ${OUTDIR}/"
+ls -lh "${OUTDIR}/"

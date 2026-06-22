@@ -1,22 +1,98 @@
 #!/bin/bash
 
-vgenes="bin/igmt-vgene-sequence.txt"
-vgenenames="bin/igmt-vgene-name.txt"
+usage() {
+  cat <<EOF
+Usage:
+  $0 -r <DNA sequence> [-t threads] [-n top] [-b band] [--locus igh|igk|igl] [--vgene-files name:seq] [--jgene-files name:seq]
+  $0 <DNA sequence> [top] [band]  (legacy positional)
+EOF
+  exit 1
+}
 
-jgenes="bin/igmt-jgene-sequence.txt"
-jgenenames="bin/igmt-jgene-name.txt"
+seq=""
+threads=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+n=1
+band=""
+locus="igh"
+vgene_files=""
+jgene_files=""
 
-
-if [ -z "$2" ]
-then
-	n=1
+if [[ $# -gt 0 && "${1#-}" == "$1" ]]; then
+  seq=$1
+  n=${2:-$n}
+  band=${3:-$band}
 else
-	n=$2
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -r|--ref) seq=$2; shift 2 ;;
+      -t|--threads) threads=$2; shift 2 ;;
+      -n|--top) n=$2; shift 2 ;;
+      -b|--band) band=$2; shift 2 ;;
+      --locus) locus=$2; shift 2 ;;
+      --vgene-files) vgene_files=$2; shift 2 ;;
+      --jgene-files) jgene_files=$2; shift 2 ;;
+      -h|--help) usage ;;
+      --) shift; break ;;
+      *) echo "Unknown argument: $1" >&2; usage ;;
+    esac
+  done
 fi
+
+[[ -n "$seq" ]] || usage
+
+case "$locus" in
+  igh|igk|igl) ;;
+  *) echo "Invalid locus: $locus (must be igh, igk, or igl)" >&2; exit 1 ;;
+esac
+
+prefix="bin/igmt-${locus}"
+locus_upper=$(echo "$locus" | tr '[:lower:]' '[:upper:]')
+vgene_label="${locus_upper}V"
+jgene_label="${locus_upper}J"
+
+parse_pair() {
+  local pair=$1
+  local name_file=${pair%%:*}
+  local seq_file=${pair#*:}
+  if [[ -z "$name_file" || -z "$seq_file" || "$name_file" == "$seq_file" ]]; then
+    echo ""
+    return
+  fi
+  echo "$name_file:$seq_file"
+}
+
+vgene_override=$(parse_pair "$vgene_files")
+jgene_override=$(parse_pair "$jgene_files")
+
+if [[ -n "$vgene_files" && -z "$vgene_override" ]]; then
+  echo "Invalid --vgene-files, expected name:sequence" >&2
+  exit 1
+fi
+if [[ -n "$jgene_files" && -z "$jgene_override" ]]; then
+  echo "Invalid --jgene-files, expected name:sequence" >&2
+  exit 1
+fi
+
+if [[ -n "$vgene_override" ]]; then
+  vgenenames=${vgene_override%%:*}
+  vgenes=${vgene_override#*:}
+else
+  vgenes="${prefix}-vgene-sequence.txt"
+  vgenenames="${prefix}-vgene-name.txt"
+fi
+
+if [[ -n "$jgene_override" ]]; then
+  jgenenames=${jgene_override%%:*}
+  jgenes=${jgene_override#*:}
+else
+  jgenes="${prefix}-jgene-sequence.txt"
+  jgenenames="${prefix}-jgene-name.txt"
+fi
+
 echo -e "Usage: ./swigh-clonotype-sequence [DNA sequence] [optional number of shown matches]"
 echo -e "\n# Highest similarity matches to V &  J genes are shown (tabulated output)"
-echo -e "IGHV gene\tSequence\tSimilarity\tSmith-Waterman score\tAligned bases\tSwigh-score"
-bin/swigh-clonotype2flatfiles $1 $vgenes | paste $vgenenames - | sort -k6nr | head -n $n
+echo -e "${vgene_label} gene\tSequence\tSimilarity\tSmith-Waterman score\tAligned bases\tSwigh-score"
+bin/swigh-clonotype2flatfiles -r "$seq" -i "$vgenes" -t "$threads" ${band:+-b "$band"} | paste $vgenenames - | sort -k6,6nr -k3,3nr -k4,4nr -k1,1 2>/dev/null | head -n $n
 
-echo -e "\nIGHJ gene\tSequence\tSimilarity\tSmith-Waterman score\tAligned bases\tSwigh-score"
-bin/swigh-clonotype2flatfiles $1 $jgenes | paste $jgenenames - | sort -k6nr | head -n $n
+echo -e "\n${jgene_label} gene\tSequence\tSimilarity\tSmith-Waterman score\tAligned bases\tSwigh-score"
+bin/swigh-clonotype2flatfiles -r "$seq" -i "$jgenes" -t "$threads" ${band:+-b "$band"} | paste $jgenenames - | sort -k6,6nr -k3,3nr -k4,4nr -k1,1 2>/dev/null | head -n $n

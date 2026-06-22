@@ -1,35 +1,98 @@
 #!/bin/bash
 
+usage() {
+  cat <<EOF
+Usage:
+  $0 -i <file.fastq> [-t threads] [-g vgene|jgene] [-n sample_size] [-b band] [--locus igh|igk|igl|auto] [--gene-files name:seq]
+  $0 <file.fastq> [threads] [vgene|jgene] [sample_size] [band]  (legacy positional)
+EOF
+  exit 1
+}
+
+threads=15
+gene="vgene"
+input=""
+sample_size=1000
+band=""
+locus="igh"
+gene_files=""
+
+if [[ $# -gt 0 && "${1#-}" == "$1" ]]; then
+  input=$1
+  threads=${2:-$threads}
+  gene=${3:-$gene}
+  sample_size=${4:-$sample_size}
+  band=${5:-$band}
+else
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -i|--input) input=$2; shift 2 ;;
+      -t|--threads) threads=$2; shift 2 ;;
+      -g|--gene) gene=$2; shift 2 ;;
+      -n|--number) sample_size=$2; shift 2 ;;
+      -b|--band) band=$2; shift 2 ;;
+      --locus) locus=$2; shift 2 ;;
+      --gene-files) gene_files=$2; shift 2 ;;
+      -h|--help) usage ;;
+      --) shift; break ;;
+      *) echo "Unknown argument: $1" >&2; usage ;;
+    esac
+  done
+fi
+
+[[ -n "$input" ]] || usage
+case "$gene" in
+  vgene|jgene) ;;
+  *) echo "Invalid gene type: $gene (must be vgene or jgene)" >&2; exit 1 ;;
+esac
+case "$locus" in
+  igh|igk|igl|auto) ;;
+  *) echo "Invalid locus: $locus (must be igh, igk, igl, or auto)" >&2; exit 1 ;;
+esac
+
+parse_pair() {
+  local pair=$1
+  local name_file=${pair%%:*}
+  local seq_file=${pair#*:}
+  if [[ -z "$name_file" || -z "$seq_file" || "$name_file" == "$seq_file" ]]; then
+    echo ""
+    return
+  fi
+  echo "$name_file:$seq_file"
+}
+
+gene_override=$(parse_pair "$gene_files")
+if [[ -n "$gene_files" && -z "$gene_override" ]]; then
+  echo "Invalid --gene-files, expected name:sequence" >&2
+  exit 1
+fi
+
 rm -rf tmp
 mkdir tmp
 
-
-if [ -z "$2" ]
-then
-        processes=15
+if [[ -n "$gene_override" ]]; then
+  genenames=${gene_override%%:*}
+  genes=${gene_override#*:}
 else
-        processes=$2
+  if [[ "$locus" == "auto" ]]; then
+    # Legacy combined set (all loci)
+    genes="bin/igmt-${gene}-sequence.txt"
+    genenames="bin/igmt-${gene}-name.txt"
+  else
+    genes="bin/igmt-${locus}-${gene}-sequence.txt"
+    genenames="bin/igmt-${locus}-${gene}-name.txt"
+  fi
 fi
+file=${input%.fastq}
 
-if [ -z "$3" ]
-then
-        gene="vgene"
-else
-        gene=$3
-fi
+echo "Input file: ${input}"
+echo "Randomly Subsampling ${sample_size} sequences for clonotyping"
+echo "Threads: ${threads}, gene set: ${gene}"
 
-genes="bin/igmt-"$gene"-sequence.txt"
-genenames="bin/igmt-"$gene"-name.txt"
-file=${1%.fastq}
-
-echo "Usage: ./swigh-clonotype-random [file.fastq] [processes] [vgene/jgene]"
-echo "Input file: "$1 
-echo -e "Randomly Subsampling 1000 sequences for clonotyping\n"
-
-cat $1 | awk 'NR%4==2 {print}'| shuf -n 1000 > tmp/seq.txt
+awk 'NR%4==2 {print}' "$input" | shuf -n "$sample_size" > tmp/seq.txt
 
 n=$(< tmp/seq.txt wc -l)
-lines=$(awk -v num=$n -v processes=$processes 'BEGIN {print int(num/processes)}')
+lines=$(awk -v num=$n -v processes=$threads 'BEGIN {print int(num/processes)}')
 
 echo "Splitting fastq file into chunks of $lines lines"
 split -l $lines tmp/seq.txt tmp/split.seq.stack.
@@ -39,18 +102,15 @@ Files="split.seq.stack.*"
 for f in 'tmp/'$Files
 do
 	while IFS= read -r line; do
-    		#bin/SWscore $1 $line
-		bin/swigh-clonotype2flatfiles $line $genes | paste $genenames - | sort -k6nr | head -n 1 >> $f.out.txt
+		bin/swigh-clonotype2flatfiles -r "$line" -i "$genes" -t "$threads" ${band:+-b "$band"} | paste $genenames - | sort -k6nr 2>/dev/null | head -n 1 >> $f.out.txt
 	done < $f &
 done
 wait
 
-echo "concatenating output..."
+echo "Concatenating output..."
 cat tmp/split.seq.stack*.out.txt > $file"."$gene".txt"
 
 echo -e "\nCounts\tGene"
 cat $file"."$gene".txt" |awk '{print $1}' | sort | uniq -c | awk '{print $1"\t"$2}' | sort -k1nr
 
 rm -r tmp
-
-

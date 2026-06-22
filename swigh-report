@@ -4,18 +4,25 @@ ClonalSequences() {
         awk -v threshold="$2" '$2 >= threshold {sum += $6} END {print sum}' "$1"
 }
 
+if [[ -z "$1" ]]; then
+        echo -e "\nUsage: ./swigh-report [file.out from swigh-score] [--locus igh|igk|igl] [--vgene-files name:seq] [--jgene-files name:seq]\n"
+        exit 1
+fi
+
 input_file="$1"
+shift
+extra_args=("$@")
+
 total_sequences=$(awk '{sum += $6} END {print sum}' "$input_file")
 
 echo -e "\nUsage: ./swigh-report [file.out from swigh-score)\n"
 
 echo -e "Highest scoring match:"
 
-#read -r line < "$input_file"
-read -r line < <(sort -k5,5nr "$input_file")
+# Take the first line (already sorted by swigh-score) as the best match
+read -r sequence similarity sw_score aligned swigh_score count < "$input_file"
 echo -e "Sequence\tSimilarity\tSmith-Waterman score\tAligned bases\tSwigh-score\tNumber of identical sequences"
-echo "$line" | tr -s ' ' '\t'
-sequence=$(echo "$line" | awk '{print $1}')
+echo -e "${sequence}\t${similarity}\t${sw_score}\t${aligned}\t${swigh_score}\t${count}"
 
 echo -e "\nSimilarity\tSequences\tFraction (of $total_sequences sequences)"
 
@@ -35,4 +42,4 @@ for similarity in 1.00 0.99 0.98 0.97 0.96 0.95 0.90 0.85 0.80 0.70 0.60 0.50 0.
 done
 
 echo -e "\nClonotype of highest scoring sequence:\n"
-./swigh-clonotype-sequence "$sequence"
+./swigh-clonotype-sequence -r "$sequence" "${extra_args[@]}"

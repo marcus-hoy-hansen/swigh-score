@@ -1,0 +1,140 @@
+#!/bin/bash
+set -euo pipefail
+
+# ── Paths ────────────────────────────────────────────────────────────────────
+SWIGH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BBTOOLS_SIF="${SWIGH_DIR}/2026_05_27/bbtools.sif"
+FASTP_SIF="${SWIGH_DIR}/2026_05_27/fastp.sif"
+FASTQC_SIF="${SWIGH_DIR}/2026_05_27/fastqc2.sif"
+WORKERS=24
+SW_THREADS=1
+MIN_LENGTH=200
+QUALITY_THRESHOLD=15
+
+usage() {
+  cat <<'EOF'
+Usage:
+  swigh-igl-pipeline [--length N] [--quality Q] <base>
+
+  <base>  Sample base name (e.g. 22-0453-00_S4)
+          Expects <base>_L001_R1_001.fastq.gz and
+                  <base>_L001_R2_001.fastq.gz in the current directory.
+
+Options:
+  --length N   Minimum merged read length to retain after merging [default: 200]
+  --quality Q  fastp qualified quality phred threshold [default: 15]
+
+Output:
+  <base>/FASTQC/                           FastQC reports (raw reads)
+  <base>/FASTQC_MERGED/                    FastQC report (merged reads)
+  <base>/<base>_fastp.html/json            fastp trimming report
+  <base>/<base>.unmerged_R1/R2.fastq       adapter/quality-trimmed unmerged reads
+  <base>/<base>.merged.fq                  fastp merged reads
+  <base>/<base>.merged.minN.fq             merged reads ≥N bp
+  <base>/<base>.igl.vj.exhaustive{,.summary}.tsv
+  <base>/<base>.igl.vj.exhaustive.html
+EOF
+  exit 1
+}
+
+is_non_negative_integer() {
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+BASE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --length)
+      [[ $# -ge 2 ]] || usage
+      MIN_LENGTH="$2"
+      shift 2
+      ;;
+    --quality)
+      [[ $# -ge 2 ]] || usage
+      QUALITY_THRESHOLD="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      ;;
+    --*)
+      echo "Error: unknown option: $1" >&2
+      usage
+      ;;
+    *)
+      if [[ -n "${BASE}" ]]; then
+        echo "Error: multiple sample base names provided" >&2
+        usage
+      fi
+      BASE="$1"
+      shift
+      ;;
+  esac
+done
+
+[[ -n "${BASE}" ]] || usage
+is_non_negative_integer "${MIN_LENGTH}" || { echo "Error: --length must be a non-negative integer" >&2; exit 1; }
+is_non_negative_integer "${QUALITY_THRESHOLD}" || { echo "Error: --quality must be a non-negative integer" >&2; exit 1; }
+WORKDIR="${PWD}"
+
+R1="${WORKDIR}/${BASE}_L001_R1_001.fastq.gz"
+R2="${WORKDIR}/${BASE}_L001_R2_001.fastq.gz"
+
+[[ -f "$R1" ]] || { echo "Error: not found: $R1" >&2; exit 1; }
+[[ -f "$R2" ]] || { echo "Error: not found: $R2" >&2; exit 1; }
+
+OUTDIR="${WORKDIR}/${BASE}"
+mkdir -p "${OUTDIR}/FASTQC"
+mkdir -p "${OUTDIR}/FASTQC_MERGED"
+
+# ── Step 1: FastQC on raw reads ───────────────────────────────────────────────
+echo "[1/6] FastQC — raw reads"
+apptainer exec "${FASTQC_SIF}" fastqc "$R1" "$R2" -o "${OUTDIR}/FASTQC" --threads 2
+
+# ── Step 2: Adapter trimming, quality filtering, and read merging (fastp) ───
+echo "[2/6] fastp — trim, filter, and merge"
+UNMERGED_R1="${OUTDIR}/${BASE}.unmerged_R1.fastq"
+UNMERGED_R2="${OUTDIR}/${BASE}.unmerged_R2.fastq"
+MERGED="${OUTDIR}/${BASE}.merged.fq"
+apptainer exec "${FASTP_SIF}" fastp \
+  -i "$R1" -I "$R2" \
+  --merge \
+  --merged_out "$MERGED" \
+  --out1 "$UNMERGED_R1" --out2 "$UNMERGED_R2" \
+  --detect_adapter_for_pe \
+  --qualified_quality_phred "${QUALITY_THRESHOLD}" \
+  -h "${OUTDIR}/${BASE}_fastp.html" \
+  -j "${OUTDIR}/${BASE}_fastp.json" \
+  --thread 8
+
+# ── Step 3: Remove merged reads shorter than requested length ───────────────
+echo "[3/6] reformat.sh — filter merged reads < ${MIN_LENGTH} bp"
+MERGED_FILT="${OUTDIR}/${BASE}.merged.min${MIN_LENGTH}.fq"
+apptainer exec "${BBTOOLS_SIF}" reformat.sh \
+  in="$MERGED" out="$MERGED_FILT" minlength="${MIN_LENGTH}"
+
+# ── Step 4: FastQC on merged reads ───────────────────────────────────────────
+echo "[4/6] FastQC — merged reads"
+apptainer exec "${FASTQC_SIF}" fastqc "$MERGED_FILT" -o "${OUTDIR}/FASTQC_MERGED" --threads 2
+
+# ── Step 5: Combined exhaustive IGL V/J assignment ──────────────────────────
+# Must cd to SWIGH_DIR because the script uses relative bin/ paths.
+echo "[5/6] swigh-clonotype-exhaustive-vj — IGL (${WORKERS} workers, ${SW_THREADS} SW thread/seq)"
+(cd "${SWIGH_DIR}" && ./swigh-clonotype-exhaustive-vj \
+    -i "${MERGED_FILT}" \
+    --locus igl \
+    --workers "${WORKERS}" \
+    -t "${SW_THREADS}" \
+    -o "${OUTDIR}/${BASE}.")
+
+# ── Step 6: HTML clone report ────────────────────────────────────────────────
+echo "[6/6] generate_clone_report.py — HTML report"
+python3 "${SWIGH_DIR}/generate_clone_report.py" \
+  "${OUTDIR}/${BASE}.igl.vj.exhaustive.tsv" \
+  --sample "${BASE}" \
+  --fastp-json "${OUTDIR}/${BASE}_fastp.json" \
+  --output "${OUTDIR}/${BASE}.igl.vj.exhaustive.html"
+
+echo ""
+echo "Done. Results in: ${OUTDIR}/"
+ls -lh "${OUTDIR}/"

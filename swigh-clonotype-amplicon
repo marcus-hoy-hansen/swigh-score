@@ -1,18 +1,50 @@
 #!/bin/bash
 
-lines=$(< $1 wc -l)
+usage() {
+  cat <<EOF
+Usage:
+  $0 -i <file.fastq> [-t threads] [-b band] [reads] [--locus igh|igk|igl] [--vgene-files name:seq] [--jgene-files name:seq]
+  $0 <file.fastq> [reads] [band]  (legacy positional)
+EOF
+  exit 1
+}
 
-if [ -z "$2" ]
-then
-        n=$lines
+input=""
+threads=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+read_lines=""
+band=""
+extra_args=()
+
+if [[ $# -gt 0 && "${1#-}" == "$1" ]]; then
+  input=$1
+  read_lines=$2
+  band=$3
 else
-        n=$(($2*4))
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -i|--input) input=$2; shift 2 ;;
+      -t|--threads) threads=$2; shift 2 ;;
+      -b|--band) band=$2; shift 2 ;;
+      --locus) extra_args+=("--locus" "$2"); shift 2 ;;
+      --vgene-files) extra_args+=("--vgene-files" "$2"); shift 2 ;;
+      --jgene-files) extra_args+=("--jgene-files" "$2"); shift 2 ;;
+      -h|--help) usage ;;
+      --) shift; break ;;
+      *) read_lines=$1; shift ;;
+    esac
+  done
+fi
+
+[[ -n "$input" ]] || usage
+
+total_lines=$(< "$input" wc -l)
+
+if [ -z "$read_lines" ]; then
+        n=$total_lines
+else
+        n=$(($read_lines*4))
 fi
 
 echo "Finding likely V and J-gene usage of most recurrent sequence (amplicon sequencing only)"
 echo "Using "$n" lines in the fastq file ("$(($n/4))" reads) for the analysis..."
-head -n $n $1 | awk 'NR%4==2 {print}'| sort | uniq -c | tr -s " " "\t" | awk '{ print $2"\t"$1}' | sort -k2nr | head -n 1 | cut -f1 | ./swigh-clonotype-sequence $(</dev/stdin)
-
-
-
-
+head -n $n "$input" | awk 'NR%4==2 {print}'| sort | uniq -c | tr -s " " "\t" | awk '{ print $2"\t"$1}' | sort -k2nr 2>/dev/null | head -n 1 | cut -f1 | ./swigh-clonotype-sequence -r $(</dev/stdin) -t "$threads" ${band:+-b "$band"} "${extra_args[@]}" 2>/dev/null

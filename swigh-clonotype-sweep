@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# Sweep all V-gene references for a locus by running swigh-score sequentially.
+# Filters alignments at the given identity threshold and summarizes supporting counts per gene.
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  swigh-clonotype-sweep -i <file.fastq> --locus igh|igk|igl [-t threads] [-p pct_identity] [-o prefix]
+
+Options:
+  -i, --input     FASTQ file (required)
+  --locus         igh | igk | igl (required)
+  -t, --threads   Threads passed to swigh-score (default: detected cores)
+  -p, --percent   Identity percent cutoff (default: 98)
+  -o, --out-prefix  Prefix for outputs (default: input basename + ".")
+EOF
+  exit 1
+}
+
+input=""
+locus=""
+threads=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+percent=98
+out_prefix=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -i|--input) input=$2; shift 2 ;;
+    --locus) locus=$2; shift 2 ;;
+    -t|--threads) threads=$2; shift 2 ;;
+    -p|--percent) percent=$2; shift 2 ;;
+    -o|--out-prefix) out_prefix=$2; shift 2 ;;
+    -h|--help) usage ;;
+    --) shift; break ;;
+    *) echo "Unknown argument: $1" >&2; usage ;;
+  esac
+done
+
+[[ -n "$input" && -n "$locus" ]] || usage
+
+case "$locus" in
+  igh|igk|igl) ;;
+  *) echo "Invalid locus: $locus (expected igh, igk, or igl)" >&2; exit 1 ;;
+esac
+
+[[ "$threads" =~ ^[0-9]+$ ]] || { echo "Threads must be an integer" >&2; exit 1; }
+[[ "$percent" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "Percent must be numeric" >&2; exit 1; }
+(( threads > 0 )) || { echo "Threads must be > 0" >&2; exit 1; }
+
+gene_seq_file="bin/igmt-${locus}-vgene-sequence.txt"
+gene_name_file="bin/igmt-${locus}-vgene-name.txt"
+if [[ ! -f "$gene_seq_file" || ! -f "$gene_name_file" ]]; then
+  echo "Missing gene files: $gene_name_file / $gene_seq_file" >&2
+  exit 1
+fi
+
+input_base=$(basename "$input")
+[[ -n "$out_prefix" ]] || out_prefix="${input_base}."
+
+tmpdir=$(mktemp -d -p . swigh-sweep.XXXXXX)
+filtered_dir="$tmpdir/filtered"
+mkdir -p "$filtered_dir"
+
+echo "Input: $input"
+echo "Locus: $locus (vgene)"
+echo "Threads: $threads"
+echo "Identity cutoff: ${percent}%"
+echo "Temp dir: $tmpdir"
+
+summary_tmp="$tmpdir/summary.tsv"
+threshold_frac=$(awk -v p="$percent" 'BEGIN{printf "%.6f", p/100}')
+
+paste "$gene_name_file" "$gene_seq_file" | while IFS=$'\t' read -r genename seq; do
+  [[ -n "$genename" && -n "$seq" ]] || continue
+  safe_name=$(echo "$genename" | tr -c 'A-Za-z0-9._-' '_')
+  out_prefix_gene="${tmpdir}/${safe_name}."
+  ./swigh-score -i "$input" -r "$seq" -t "$threads" -o "$out_prefix_gene" > /dev/null
+
+  outfile="${out_prefix_gene}${input_base}.out"
+  filtered="${filtered_dir}/${safe_name}.filtered.out"
+  awk -v thr="$threshold_frac" '($2 >= thr)' "$outfile" > "$filtered" || true
+
+  read -r count maxscore <<<"$(awk -v thr="$threshold_frac" '($2 >= thr){c+=$6; if($5>max)max=$5} END{if(c>0){printf "%d %.6f", c, max}}' "$filtered")"
+  if [[ -n "${count:-}" ]]; then
+    printf "%s\t%d\t%.2f\t%.6f\n" "$genename" "$count" "$percent" "$maxscore" >> "$summary_tmp"
+  fi
+done
+
+summary_out="${out_prefix}${locus}.sweep.summary.tsv"
+{
+  echo -e "Gene\tCount_at_${percent}%\tCutoff_pct\tMax_swigh_score"
+  sort -k2,2nr -k4,4nr "$summary_tmp"
+} > "$summary_out"
+
+echo "Summary written to $summary_out"
+echo "Filtered per-gene outputs kept in $filtered_dir"

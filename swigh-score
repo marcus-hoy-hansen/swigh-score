@@ -1,33 +1,95 @@
 #!/bin/bash
-# USAGE: ./swigh-score [file.fastq] [processes] [sequence] [optional label] 
 # STOPPING RUNAWAY PROCESS: killall -9 swigh-score
+
+set -euo pipefail
+
+usage() {
+  cat <<EOF
+Usage:
+  $0 -i <file.fastq> -r <clonotype> [-t threads] [-o prefix] [-B batch] [-b band] [--no-dedup]
+  $0 <file.fastq> <threads> <clonotype> [prefix]      (legacy positional)
+
+Options:
+  -i, --input        FASTQ file (required)
+  -r, --ref          Clonotype DNA sequence (required)
+  -t, --threads      Number of threads (default: detected cores)
+  -o, --out-prefix   Prefix for output files (default: none)
+  -B, --batch        Batch size passed to SWscore_hyperthreaded (optional)
+  -b, --band         Banded SW half-width (optional; 0 = full SW)
+  --no-dedup         Skip deduplication; align all reads
+  -h, --help         Show this help
+EOF
+  exit 1
+}
+
+default_threads=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+input=""
+ref=""
+threads="$default_threads"
+out_prefix=""
+batch=""
+band=""
+dedup=1
+
+# Support legacy positional args if first argument is not a flag
+if [[ $# -gt 0 && "${1#-}" == "$1" ]]; then
+  input=${1:-}
+  threads=${2:-$threads}
+  ref=${3:-}
+  out_prefix=${4:-}
+else
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -i|--input) input=$2; shift 2 ;;
+      -r|--ref) ref=$2; shift 2 ;;
+      -t|--threads) threads=$2; shift 2 ;;
+      -o|--out-prefix) out_prefix=$2; shift 2 ;;
+      -B|--batch) batch=$2; shift 2 ;;
+      -b|--band) band=$2; shift 2 ;;
+      --no-dedup) dedup=0; shift ;;
+      -h|--help) usage ;;
+      --) shift; break ;;
+      *) echo "Unknown argument: $1" >&2; usage ;;
+    esac
+  done
+fi
+
+[[ -n "$input" && -n "$ref" ]] || usage
+
+input_base=$(basename "$input")
 
 rm -rf tmp
 mkdir tmp
 
-echo "Retrieving sequences for local Smith-Waterman alignment"
-awk 'NR%4==2 {print}' $1 | sort | uniq -c | tr -s " " "\t" | awk '{ print $2"\t"$1}' > tmp/counts.txt
-cut -f1 tmp/counts.txt > tmp/stack.fastq
+if [[ "$dedup" -eq 1 ]]; then
+  echo "Retrieving sequences for local Smith-Waterman alignment (deduplicated)"
+  awk 'NR%4==2 {print}' "$input" | sort | uniq -c | tr -s " " "\t" | awk '{ print $2"\t"$1}' > tmp/counts.txt
+  cut -f1 tmp/counts.txt > tmp/stack.fastq
 
-n=$(< tmp/counts.txt wc -l)
-lines=$(awk -v num=$n -v processes=$2 'BEGIN {print int(num/processes)}')
+  n=$(< tmp/counts.txt wc -l)
+  echo "Performing hyperthreaded local alignment on $n unique sequences using $threads threads"
 
-echo "Splitting fastq file into chunks of $lines lines"
-split -l $lines tmp/stack.fastq tmp/split.stack.
+  sw_args=("-r" "$ref" "-i" "tmp/stack.fastq" "-t" "$threads")
+  [[ -n "$batch" ]] && sw_args+=("-B" "$batch")
+  [[ -n "$band" ]] && sw_args+=("-b" "$band")
 
-Files="split.stack.*"
+  bin/SWscore_hyperthreaded "${sw_args[@]}" | sort > "tmp/${input_base}.SWscore.out"
 
-for f in 'tmp/'$Files
-do
-	echo "Performing local alignment of " $f 
-	bin/SWscoresequences.sh $f $3 > $f.out.txt &
-done
+  echo "Joining with counts and sorting..."
+  join "tmp/${input_base}.SWscore.out" tmp/counts.txt | sort -k2nr -k6nr > "${out_prefix}${input_base}.out"
+else
+  echo "Running without deduplication; aligning all reads"
+  awk 'NR%4==2 {print}' "$input" > tmp/stack.fastq
 
-wait
+  sw_args=("-r" "$ref" "-i" "tmp/stack.fastq" "-t" "$threads")
+  [[ -n "$batch" ]] && sw_args+=("-B" "$batch")
+  [[ -n "$band" ]] && sw_args+=("-b" "$band")
 
-echo "Concatenating output..."
-cat tmp/split.stack.*.out.txt | sort > tmp/$1".SWscore.out" 
-join tmp/$1".SWscore.out" tmp/counts.txt | sort -k2nr -k6nr > $4$1".out"
+  bin/SWscore_hyperthreaded "${sw_args[@]}" | sort > "tmp/${input_base}.SWscore.out"
+
+  echo "Sorting output (no counts to join)..."
+  mv "tmp/${input_base}.SWscore.out" "${out_prefix}${input_base}.out"
+fi
 
 # Clean up temporary files
 rm -r tmp

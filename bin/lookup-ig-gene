@@ -1,0 +1,83 @@
+#!/bin/bash
+# Lookup V/J gene sequences for IGH/IGK/IGL (Homo sapiens, bundled IMGT tables)
+
+set -euo pipefail
+
+usage() {
+  cat <<EOF
+Usage:
+  $(basename "$0") -l IGH|IGK|IGL [-v VGENE] [-j JGENE] [--output-name]
+
+Options:
+  -l, --locus        Locus (IGH, IGK, IGL) [required]
+  -v, --vgene        V gene name to retrieve (optional)
+  -j, --jgene        J gene name to retrieve (optional)
+  --output-name      Include the gene name in output (tab-separated)
+  -h, --help         Show this help
+
+Notes:
+  - Uses bundled Homo sapiens IMGT tables in bin/.
+  - Outputs sequences in UPPERCASE; one line per requested gene.
+  - Without --output-name, V and J sequences (if both provided) are concatenated on one line.
+EOF
+  exit 1
+}
+
+locus=""
+vgene=""
+jgene=""
+output_name=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -l|--locus) locus=$2; shift 2 ;;
+    -v|--vgene) vgene=$2; shift 2 ;;
+    -j|--jgene) jgene=$2; shift 2 ;;
+    --output-name) output_name=1; shift ;;
+    -h|--help) usage ;;
+    *) echo "Unknown argument: $1" >&2; usage ;;
+  esac
+done
+
+[[ -n "$locus" ]] || usage
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+locus_lower=$(echo "$locus" | tr 'A-Z' 'a-z')
+
+case "$locus_lower" in
+  igh|igk|igl) ;;
+  *) echo "Unsupported locus: $locus (use IGH, IGK, or IGL)" >&2; exit 1 ;;
+esac
+
+names_v="$script_dir/igmt-${locus_lower}-vgene-name.txt"
+seqs_v="$script_dir/igmt-${locus_lower}-vgene-sequence.txt"
+names_j="$script_dir/igmt-${locus_lower}-jgene-name.txt"
+seqs_j="$script_dir/igmt-${locus_lower}-jgene-sequence.txt"
+
+fetch_seq() {
+  local gene="$1" names="$2" seqs="$3"
+  [[ -z "$gene" ]] && return
+  if [[ ! -f "$names" || ! -f "$seqs" ]]; then
+    echo "Missing lookup tables for locus ($names / $seqs)" >&2
+    exit 1
+  fi
+  local line
+  line=$(grep -n -F -m1 "$gene" "$names" | cut -d: -f1 || true)
+  if [[ -z "$line" ]]; then
+    echo "Gene not found: $gene" >&2
+    exit 1
+  fi
+  sed -n "${line}p" "$seqs" | tr 'a-z' 'A-Z'
+}
+
+if [[ "$output_name" -eq 1 ]]; then
+  [[ -n "$vgene" ]] && echo -e "${vgene}\t$(fetch_seq "$vgene" "$names_v" "$seqs_v")"
+  [[ -n "$jgene" ]] && echo -e "${jgene}\t$(fetch_seq "$jgene" "$names_j" "$seqs_j")"
+else
+  out=""
+  seq=$(fetch_seq "$vgene" "$names_v" "$seqs_v" || true)
+  [[ -n "$seq" ]] && out+="$seq"
+  seq=$(fetch_seq "$jgene" "$names_j" "$seqs_j" || true)
+  [[ -n "$seq" ]] && out+="$seq"
+  [[ -n "$out" ]] && echo "$out"
+fi

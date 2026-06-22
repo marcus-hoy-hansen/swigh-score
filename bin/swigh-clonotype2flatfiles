@@ -1,14 +1,46 @@
 #!/bin/bash
 
-input_file=$2
+usage() {
+  cat <<EOF
+Usage:
+  $0 -r <sequence> -i <genes_file> [-t threads] [-b band]
+  $0 <sequence> <genes_file> [threads] [band]   (legacy positional)
+EOF
+  exit 1
+}
 
-# Check if the file exists
+sequence=""
+input_file=""
+threads=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+band=""
+
+if [[ $# -gt 0 && "${1#-}" == "$1" ]]; then
+  sequence=$1
+  input_file=$2
+  threads=${3:-$threads}
+  band=${4:-$band}
+else
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -r|--ref) sequence=$2; shift 2 ;;
+      -i|--input) input_file=$2; shift 2 ;;
+      -t|--threads) threads=$2; shift 2 ;;
+      -b|--band) band=$2; shift 2 ;;
+      -h|--help) usage ;;
+      --) shift; break ;;
+      *) echo "Unknown argument: $1" >&2; usage ;;
+    esac
+  done
+fi
+
+[[ -n "$sequence" && -n "$input_file" ]] || usage
+
 if [ ! -f "$input_file" ]; then
     echo "File $input_file not found."
     exit 1
 fi
 
-while IFS= read -r line; do
-    bin/SWscore $1 $line
-done < "$input_file"
+args=("-r" "$sequence" "-i" "$input_file" "-t" "$threads")
+[[ -n "$band" ]] && args+=("-b" "$band")
 
+bin/SWscore_hyperthreaded "${args[@]}"

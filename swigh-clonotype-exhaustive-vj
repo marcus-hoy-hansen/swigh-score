@@ -1,0 +1,159 @@
+#!/bin/bash
+
+# Exhaustive clonotyping across both V and J genes for each unique input read.
+# Produces one row per deduplicated read with best V and best J assignments,
+# the observed count, and the original full sequence as the final column.
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  swigh-clonotype-exhaustive-vj -r <DNA sequence> [--locus igh|igk|igl] [-t sw_threads] [-b band] [-o prefix]
+  swigh-clonotype-exhaustive-vj -i <file.fastq> [--locus igh|igk|igl] [-t sw_threads] [--workers N] [-b band] [-n max_reads] [-o prefix]
+
+Options:
+  -r, --ref         DNA sequence to score directly
+  -i, --input       FASTQ file (required)
+  --locus           igh | igk | igl (default: igk)
+  -t, --threads     Threads passed to swigh-clonotype2flatfiles per sequence (default: 1)
+  --workers         Parallel sequences to process (default: detected cores)
+  -b, --band        Banded SW half-width (optional; 0 = full SW)
+  -n, --max-reads   Limit to top N unique sequences by count (optional)
+  -o, --out-prefix  Prefix for outputs (default: input basename + ".")
+EOF
+  exit 1
+}
+
+input=""
+seq=""
+locus="igk"
+sw_threads=1
+workers=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+band=""
+max_reads=""
+out_prefix=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -r|--ref) seq=$2; shift 2 ;;
+    -i|--input) input=$2; shift 2 ;;
+    --locus) locus=$2; shift 2 ;;
+    -t|--threads) sw_threads=$2; shift 2 ;;
+    --workers) workers=$2; shift 2 ;;
+    -b|--band) band=$2; shift 2 ;;
+    -n|--max-reads) max_reads=$2; shift 2 ;;
+    -o|--out-prefix) out_prefix=$2; shift 2 ;;
+    -h|--help) usage ;;
+    --) shift; break ;;
+    *) echo "Unknown argument: $1" >&2; usage ;;
+  esac
+done
+
+if [[ -n "$seq" && -n "$input" ]]; then
+  echo "Use either --ref or --input, not both" >&2
+  exit 1
+fi
+[[ -n "$seq" || -n "$input" ]] || usage
+case "$locus" in igh|igk|igl) ;; *) echo "Invalid locus: $locus" >&2; exit 1 ;; esac
+[[ "$sw_threads" =~ ^[0-9]+$ && "$sw_threads" -gt 0 ]] || { echo "Threads must be positive integer" >&2; exit 1; }
+[[ "$workers" =~ ^[0-9]+$ && "$workers" -gt 0 ]] || { echo "Workers must be positive integer" >&2; exit 1; }
+[[ -z "$max_reads" || ( "$max_reads" =~ ^[0-9]+$ && "$max_reads" -gt 0 ) ]] || { echo "Max reads must be positive integer" >&2; exit 1; }
+
+for gene in vgene jgene; do
+  gene_seq="bin/igmt-${locus}-${gene}-sequence.txt"
+  gene_name="bin/igmt-${locus}-${gene}-name.txt"
+  if [[ ! -f "$gene_seq" || ! -f "$gene_name" ]]; then
+    echo "Missing gene files: $gene_name / $gene_seq" >&2
+    exit 1
+  fi
+done
+
+if [[ -n "$input" ]]; then
+  input_base=$(basename "${input%.fastq}")
+  [[ -n "$out_prefix" ]] || out_prefix="${input_base}."
+else
+  [[ -n "$out_prefix" ]] || out_prefix="sequence."
+fi
+
+tmpdir=$(mktemp -d -p "${TMPDIR:-/tmp}" swigh-exhaustive-vj.XXXXXX)
+jobs_file="$tmpdir/jobs.tsv"
+out_dir="$tmpdir/out"
+mkdir -p "$out_dir"
+
+if [[ -n "$input" ]]; then
+  echo "Input: $input"
+else
+  echo "Sequence input: ${#seq} bp"
+fi
+echo "Locus: $locus  Genes: vgene+jgene"
+echo "Workers: $workers  SW threads per sequence: $sw_threads"
+[[ -n "$max_reads" ]] && echo "Limiting to top $max_reads unique sequences by count"
+
+if [[ -n "$input" ]]; then
+  awk 'NR%4==2 {print}' "$input" \
+    | sort \
+    | uniq -c \
+    | tr -s " " "\t" \
+    | awk '{print $2"\t"$1}' \
+    | sort -k2,2nr -k1,1 > "$tmpdir/jobs.sorted.tsv"
+else
+  printf '%s\t1\n' "$seq" > "$tmpdir/jobs.sorted.tsv"
+fi
+
+if [[ -n "$max_reads" ]]; then
+  head -n "$max_reads" "$tmpdir/jobs.sorted.tsv" > "$jobs_file"
+else
+  mv "$tmpdir/jobs.sorted.tsv" "$jobs_file"
+fi
+n_seq=$(wc -l < "$jobs_file")
+echo "Unique sequences: $n_seq"
+
+nl -ba "$jobs_file" > "$tmpdir/jobs.numbered.tsv"
+
+export locus sw_threads band out_dir
+best_hit() {
+  local gene=$1
+  local seq=$2
+  local gene_seq="bin/igmt-${locus}-${gene}-sequence.txt"
+  local gene_name="bin/igmt-${locus}-${gene}-name.txt"
+
+  bin/swigh-clonotype2flatfiles -r "$seq" -i "$gene_seq" -t "$sw_threads" ${band:+-b "$band"} \
+    | paste "$gene_name" - \
+    | sort -k6,6nr -k3,3nr -k4,4nr -k1,1 \
+    | head -n1
+}
+export -f best_hit
+
+process_one() {
+  local line=$1
+  local idx seq count vhit jhit outfile
+  IFS=$'\t' read -r idx seq count <<< "$line"
+  outfile="$out_dir/out.${idx}"
+  vhit=$(best_hit vgene "$seq")
+  jhit=$(best_hit jgene "$seq")
+
+  printf '%s\t%s\t%s\t%s\t%s\n' "$idx" "$count" "$vhit" "$jhit" "$seq" > "$outfile"
+}
+export -f process_one
+
+cat "$tmpdir/jobs.numbered.tsv" | xargs -I{} -P "$workers" bash -lc 'process_one "$@"' _ {}
+
+assignments_raw="$tmpdir/assignments.raw.tsv"
+find "$out_dir" -type f -name 'out.*' | sort -V | xargs cat > "$assignments_raw"
+
+assignments="${out_prefix}${locus}.vj.exhaustive.tsv"
+{
+  echo -e "Index\tCount\tV_gene\tV_match_sequence\tV_identity\tV_SW_score\tV_aligned_bases\tV_Swigh_score\tJ_gene\tJ_match_sequence\tJ_identity\tJ_SW_score\tJ_aligned_bases\tJ_Swigh_score\tOriginal_sequence"
+  cat "$assignments_raw"
+} > "$assignments"
+
+summary="${out_prefix}${locus}.vj.exhaustive.summary.tsv"
+{
+  echo -e "Count\tV_gene\tJ_gene"
+  awk 'BEGIN{FS=OFS="\t"} {counts[$3 OFS $9]+=$2} END{for(pair in counts) print counts[pair],pair}' "$assignments_raw" | sort -k1,1nr -k2,2 -k3,3
+} > "$summary"
+
+echo "Per-sequence best hits: $assignments"
+echo "Summary counts: $summary"
+echo "Temp kept at $tmpdir"
