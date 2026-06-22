@@ -20,6 +20,8 @@ chmod u+x config
 
 ./config
 
+This also writes `pipeline-containers.sh`, which points the pipeline scripts at a shared SIF directory in `../singularities/`.
+
 
 ## Important commands
 To Compare a clonotype sequence to reads in fastq file format: 
@@ -65,6 +67,22 @@ For the IGL paired-end pipeline you can tune the merged-read length cutoff and f
 
 ./swigh-igl-pipeline --length 180 --quality 12 22-0453-00_S4
 
+`swigh-pipeline` supports both single-end and paired-end runs:
+
+./swigh-pipeline --input test10k.fastq --paired-end false
+./swigh-pipeline --sample 22-0453-00_S4
+./swigh-pipeline --input 23-0492-s1_S2_L001_R1_001.fastq
+
+Paired-end notes:
+- `--sample <base>` looks for either `<base>_L001_R1_001.fastq.gz` / `<base>_L001_R2_001.fastq.gz` or the uncompressed `.fastq` equivalents.
+- `--input <R1.fastq[.gz]>` in paired-end mode infers the matching R2 file by replacing `_R1_` with `_R2_`.
+- If `--sample` is omitted with paired-end `--input`, the sample name is derived from the R1 filename.
+
+Runtime notes:
+- If `apptainer` is available and the configured SIF files exist, the pipeline uses containers.
+- Otherwise it falls back to native tools.
+- If native tools are missing, the scripts attempt to install `fastqc`, `fastp`, and `bbmap` with `sudo apt-get update` and `sudo apt-get install`.
+
 ## Updating local version
 You may wish to update your local version, e.g., using the following command (warning, overwrites any changes):
 
@@ -74,5 +92,4 @@ cd swigh-score
 git stash
 
 git pull origin main
-
 

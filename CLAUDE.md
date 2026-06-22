@@ -11,6 +11,7 @@ chmod u+x config && ./config
 ```
 
 This compiles `bin/SWscore.c` → `bin/SWscore` and `bin/q-filter.c` → `quality-filter`, and sets executable bits on all scripts.
+It also writes `pipeline-containers.sh`, which hardcodes the shared SIF directory used by the pipeline wrappers.
 
 To rebuild only the hyperthreaded scorer:
 ```bash
@@ -54,9 +55,9 @@ Flat-text reference tables live in `bin/`:
 
 All clonotype tools default to `--locus igh`; pass `--locus igk` or `--locus igl` to switch.
 
-## Containerised Pipeline (swigh-igl-pipeline)
+## Pipeline Runtime
 
-SIF files expected in `2026_05_27/`:
+The pipeline wrappers source `pipeline-containers.sh`, which points at `../singularities/` for:
 
 | Tool | SIF |
 |------|-----|
@@ -64,14 +65,34 @@ SIF files expected in `2026_05_27/`:
 | fastp | `fastp.sif` (v1.3.3) |
 | BBtools | `bbtools.sif` (bbmerge, reformat) |
 
-Run with:
+If `apptainer` is available and those SIF files exist, the pipeline uses the containers.
+If not, it falls back to native commands and attempts to install missing tools with:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y fastqc fastp bbmap
+```
+
+This fallback assumes a Debian/Ubuntu-style system with `sudo`.
+
+Run the IGL pipeline with:
 ```bash
 cd <dir-containing-fastqs>
 /path/to/swigh-igl-pipeline <base>
 # e.g. ../swigh-igl-pipeline 22-0453-00_S4
 ```
 
-Expects `<base>_L001_R1_001.fastq.gz` and `<base>_L001_R2_001.fastq.gz` in `$PWD`. Output goes to `$PWD/<base>/`.
+Run the general pipeline with either a sample base or a forward read:
+
+```bash
+cd <dir-containing-fastqs>
+/path/to/swigh-pipeline --sample 22-0453-00_S4
+/path/to/swigh-pipeline --input 23-0492-s1_S2_L001_R1_001.fastq
+/path/to/swigh-pipeline --input test10k.fastq --paired-end false
+```
+
+Paired-end `--sample` accepts either `.fastq.gz` or `.fastq` files named `<base>_L001_R1_001...` and `<base>_L001_R2_001...`.
+Paired-end `--input` expects the R1 filename to contain `_R1_`; R2 is inferred by replacing that token with `_R2_`. Output goes to `$PWD/<base>/`.
 
 **BBmerge must run with `threads=1`** — its multithreaded FASTQ reader has a race condition that drops read pairs silently. fastp intermediates are written uncompressed (`.fastq`) for the same reason.
 

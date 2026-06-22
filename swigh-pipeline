@@ -13,6 +13,7 @@ LOCUS=igh
 CLONAL_SEQ=""
 PAIRED_END=true
 SINGLE_END_FQ=""
+PAIRED_R1_FQ=""
 
 usage() {
   cat <<'EOF'
@@ -37,7 +38,9 @@ Options:
                           clonotype). Background landscape report always runs.
   --paired-end true|false Use paired-end R1/R2 input [default: true].
                           Set false for single-end mode; requires --input.
-  --input FILE            Single-end fastq.gz input (required when --paired-end false).
+  --input FILE            Input FASTQ file. In single-end mode, this is the only
+                          read file. In paired-end mode, provide the forward read
+                          (R1) and the script will infer the matching R2 file.
 
 Output (paired-end, always):
   <base>/FASTQC/                           FastQC reports (raw reads)
@@ -108,7 +111,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --input)
       [[ $# -ge 2 ]] || usage
-      SINGLE_END_FQ="$2"
+      if [[ "${PAIRED_END}" == true ]]; then
+        PAIRED_R1_FQ="$2"
+      else
+        SINGLE_END_FQ="$2"
+      fi
       shift 2
       ;;
     -h|--help)
@@ -138,19 +145,19 @@ if [[ "${PAIRED_END}" == false ]]; then
     echo "Sample name derived from input: ${BASE}"
   fi
 else
-  [[ -z "${SINGLE_END_FQ}" ]] || { echo "Error: --input is only valid with --paired-end false" >&2; exit 1; }
-  [[ -n "${BASE}" ]] || { echo "Error: --sample is required for paired-end mode" >&2; usage; }
+  [[ -z "${SINGLE_END_FQ}" ]] || { echo "Error: single-end input is only valid with --paired-end false" >&2; exit 1; }
+  [[ -n "${BASE}${PAIRED_R1_FQ}" ]] || { echo "Error: paired-end mode requires --sample or --input R1.fastq[.gz]" >&2; usage; }
 fi
 
 WORKDIR="${PWD}"
-OUTDIR="${WORKDIR}/${BASE}"
-mkdir -p "${OUTDIR}/FASTQC"
-mkdir -p "${OUTDIR}/FASTQC_FILTERED"
-pipeline_runtime_banner
-
-BACKGROUND_TSV="${OUTDIR}/${BASE}.${LOCUS}.vj.exhaustive.tsv"
-BACKGROUND_HTML="${OUTDIR}/${BASE}.${LOCUS}.vj.exhaustive.html"
-FASTP_JSON="${OUTDIR}/${BASE}_fastp.json"
+if [[ "${PAIRED_END}" == false ]]; then
+  OUTDIR="${WORKDIR}/${BASE}"
+  mkdir -p "${OUTDIR}/FASTQC"
+  mkdir -p "${OUTDIR}/FASTQC_FILTERED"
+  BACKGROUND_TSV="${OUTDIR}/${BASE}.${LOCUS}.vj.exhaustive.tsv"
+  BACKGROUND_HTML="${OUTDIR}/${BASE}.${LOCUS}.vj.exhaustive.html"
+  FASTP_JSON="${OUTDIR}/${BASE}_fastp.json"
+fi
 
 TOTAL_STEPS=6
 [[ -n "${CLONAL_SEQ}" ]] && TOTAL_STEPS=8
@@ -203,10 +210,42 @@ else
   # ════════════════════════════════════════════════════════════════════════════
   # PAIRED-END MODE
   # ════════════════════════════════════════════════════════════════════════════
-  R1="${WORKDIR}/${BASE}_L001_R1_001.fastq.gz"
-  R2="${WORKDIR}/${BASE}_L001_R2_001.fastq.gz"
+  if [[ -n "${PAIRED_R1_FQ}" ]]; then
+    R1="${PAIRED_R1_FQ}"
+    [[ -f "$R1" ]] || { echo "Error: not found: $R1" >&2; exit 1; }
+
+    R2="${R1/_R1_/_R2_}"
+    [[ "${R2}" != "${R1}" ]] || { echo "Error: paired-end --input must contain '_R1_' so R2 can be inferred (got: ${R1})" >&2; exit 1; }
+    [[ -f "$R2" ]] || { echo "Error: inferred R2 not found: $R2" >&2; exit 1; }
+
+    if [[ -z "${BASE}" ]]; then
+      BASE="$(basename "${R1}")"
+      BASE="${BASE%_L001_R1_001.fastq.gz}"
+      BASE="${BASE%_L001_R1_001.fq.gz}"
+      BASE="${BASE%_L001_R1_001.fastq}"
+      BASE="${BASE%_L001_R1_001.fq}"
+      BASE="${BASE%_R1_001.fastq.gz}"
+      BASE="${BASE%_R1_001.fq.gz}"
+      BASE="${BASE%_R1_001.fastq}"
+      BASE="${BASE%_R1_001.fq}"
+      echo "Sample name derived from paired-end input: ${BASE}"
+    fi
+  else
+    R1="${WORKDIR}/${BASE}_L001_R1_001.fastq.gz"
+    R2="${WORKDIR}/${BASE}_L001_R2_001.fastq.gz"
+    [[ -f "$R1" ]] || R1="${WORKDIR}/${BASE}_L001_R1_001.fastq"
+    [[ -f "$R2" ]] || R2="${WORKDIR}/${BASE}_L001_R2_001.fastq"
+  fi
+
   [[ -f "$R1" ]] || { echo "Error: not found: $R1" >&2; exit 1; }
   [[ -f "$R2" ]] || { echo "Error: not found: $R2" >&2; exit 1; }
+
+  OUTDIR="${WORKDIR}/${BASE}"
+  mkdir -p "${OUTDIR}/FASTQC"
+  mkdir -p "${OUTDIR}/FASTQC_FILTERED"
+  BACKGROUND_TSV="${OUTDIR}/${BASE}.${LOCUS}.vj.exhaustive.tsv"
+  BACKGROUND_HTML="${OUTDIR}/${BASE}.${LOCUS}.vj.exhaustive.html"
+  FASTP_JSON="${OUTDIR}/${BASE}_fastp.json"
 
   UNMERGED_R1="${OUTDIR}/${BASE}.unmerged_R1.fastq"
   UNMERGED_R2="${OUTDIR}/${BASE}.unmerged_R2.fastq"
@@ -243,6 +282,8 @@ else
     run_fastqc "$READS_FILT" -o "${OUTDIR}/FASTQC_FILTERED" --threads 2
   fi
 fi
+
+pipeline_runtime_banner
 
 # ── Steps 5–6: Clonal characterisation (only when --clonal-sequence given) ───
 if [[ -n "${CLONAL_SEQ}" ]]; then
