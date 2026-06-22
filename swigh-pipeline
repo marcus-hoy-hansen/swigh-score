@@ -5,7 +5,7 @@ set -euo pipefail
 SWIGH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SWIGH_DIR}/pipeline-containers.sh"
 source "${SWIGH_DIR}/pipeline-runtime.sh"
-WORKERS=24
+WORKERS=32
 SW_THREADS=1
 MIN_LENGTH=200
 QUALITY_THRESHOLD=15
@@ -35,7 +35,7 @@ Options:
   --length N              Minimum read length to retain after filtering [default: 200]
   --quality Q             fastp qualified quality phred threshold [default: 15]
   --workers N             Parallel unique-sequence workers for exhaustive clonotyping
-                          [default: 24]
+                          [default: 32]
   --clonal-sequence SEQ   DNA sequence of the clonotype of interest.
                           Runs swigh-score + swigh-report (similarity, burden,
                           clonotype). Background landscape report always runs.

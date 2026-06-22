@@ -55,7 +55,7 @@ Core options:
 - `--quality Q`
   `fastp` qualified quality threshold. Default is `15`.
 - `--workers N`
-  Outer parallel worker count for exhaustive clonotyping. Default is `24`.
+  Outer parallel worker count for exhaustive clonotyping. Default is `32`.
   `SW_THREADS` is intentionally fixed at `1` per sequence inside the pipeline.
 - `--clonal-sequence SEQ`
   Adds a clonotype-specific analysis on top of the background landscape. This runs `swigh-score` and `swigh-report`, and also performs direct V/J annotation of the provided sequence.
