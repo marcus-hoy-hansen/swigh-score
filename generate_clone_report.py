@@ -474,6 +474,21 @@ def build_clonal_overview(clonal: ClonalSummary | None) -> str:
     )
 
 
+def build_clonal_warning(clonal: ClonalSummary | None) -> str:
+    if clonal is None or clonal.top_similarity_pct >= 50.0:
+        return ""
+    return (
+        '<section class="warning-banner" role="alert">'
+        '<strong>Warning:</strong> '
+        f'The closest observed match to the supplied clonal sequence is only '
+        f'<strong>{clonal.top_similarity_pct:.1f}% identity</strong>. '
+        'Interpret clonal burden and annotation outputs with caution.'
+        '<div class="warning-hint">A wrong locus selection is one possible explanation. '
+        'Check whether <code>--locus igh</code>, <code>--locus igk</code>, or <code>--locus igl</code> matches the assay and clonal sequence you supplied.</div>'
+        '</section>'
+    )
+
+
 def build_html(
     sample: str,
     rows: list[CloneRow],
@@ -501,6 +516,7 @@ def build_html(
         for k, v in summary_cards.items()
     )
     clonal_overview_html = build_clonal_overview(clonal)
+    clonal_warning_html = build_clonal_warning(clonal)
     dominant_html = ""
     if dominant is not None:
         dominant_html = (
@@ -547,6 +563,23 @@ def build_html(
     .card {{ padding: 16px 18px; }}
     .card .label, .mini-grid span {{ color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }}
     .card .value {{ margin-top: 8px; font-size: 28px; font-weight: 700; }}
+    .warning-banner {{
+      margin: 18px 0 0;
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 2px solid #b91c1c;
+      background: linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%);
+      color: #7f1d1d;
+      box-shadow: 0 10px 26px rgba(127, 29, 29, 0.10);
+      font-size: 17px;
+      line-height: 1.4;
+    }}
+    .warning-banner strong {{ color: #991b1b; }}
+    .warning-hint {{
+      margin-top: 10px;
+      font-size: 15px;
+      color: #7f1d1d;
+    }}
     .hero {{ display: grid; grid-template-columns: 1.8fr 1fr; gap: 18px; padding: 22px; margin: 20px 0; }}
     .lead {{ font-size: 18px; margin: 0; }}
     .metrics {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }}
@@ -583,6 +616,7 @@ def build_html(
   <div class="wrap">
     <h1>{escape(title)}</h1>
     <p class="sub">Top {top_n} clone-focused report from combined V/J exhaustive clonotyping. Percentages are length-normalized identity values from the TSV output.</p>
+    {clonal_warning_html}
     {clonal_overview_html}
     <section class="cards">{card_html}</section>
     <section class="wide-grid">
