@@ -14,6 +14,7 @@ CLONAL_SEQ=""
 PAIRED_END=true
 SINGLE_END_FQ=""
 PAIRED_R1_FQ=""
+INPUT_FQ=""
 
 usage() {
   cat <<'EOF'
@@ -111,11 +112,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --input)
       [[ $# -ge 2 ]] || usage
-      if [[ "${PAIRED_END}" == true ]]; then
-        PAIRED_R1_FQ="$2"
-      else
-        SINGLE_END_FQ="$2"
-      fi
+      INPUT_FQ="$2"
       shift 2
       ;;
     -h|--help)
@@ -135,6 +132,17 @@ esac
 
 is_non_negative_integer "${MIN_LENGTH}"        || { echo "Error: --length must be a non-negative integer" >&2; exit 1; }
 is_non_negative_integer "${QUALITY_THRESHOLD}" || { echo "Error: --quality must be a non-negative integer" >&2; exit 1; }
+
+if [[ "${PAIRED_END}" == true ]]; then
+  PAIRED_R1_FQ="${INPUT_FQ}"
+else
+  SINGLE_END_FQ="${INPUT_FQ}"
+fi
+
+if [[ -n "${BASE}" && "${BASE}" =~ \.f(ast)?q(\.gz)?$ ]]; then
+  echo "Error: --sample expects a sample base, not a FASTQ filename. Use --sample ${BASE%_L001_R1_001.fastq.gz} or --input ${BASE}" >&2
+  exit 1
+fi
 
 if [[ "${PAIRED_END}" == false ]]; then
   [[ -n "${SINGLE_END_FQ}" ]] || { echo "Error: --input FILE is required when --paired-end false" >&2; exit 1; }
