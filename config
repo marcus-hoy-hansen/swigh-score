@@ -14,4 +14,19 @@ chmod u+x bin/SWscoresequences.sh
 chmod u+x bin/swigh-clonotype2flatfiles
 chmod u+x swigh-report
 
+SIF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/../singularities && pwd)"
+
+echo "Writing container path configuration"
+cat > pipeline-containers.sh <<EOF
+#!/bin/bash
+
+SWIGH_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+SIF_DIR="${SIF_DIR}"
+
+BBTOOLS_SIF="\${SIF_DIR}/bbtools.sif"
+FASTP_SIF="\${SIF_DIR}/fastp.sif"
+FASTQC_SIF="\${SIF_DIR}/fastqc2.sif"
+EOF
+chmod u+x pipeline-containers.sh
+
 echo "Finished configuration"

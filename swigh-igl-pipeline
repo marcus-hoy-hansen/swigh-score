@@ -3,9 +3,7 @@ set -euo pipefail
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 SWIGH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BBTOOLS_SIF="${SWIGH_DIR}/2026_05_27/bbtools.sif"
-FASTP_SIF="${SWIGH_DIR}/2026_05_27/fastp.sif"
-FASTQC_SIF="${SWIGH_DIR}/2026_05_27/fastqc2.sif"
+source "${SWIGH_DIR}/pipeline-containers.sh"
 WORKERS=24
 SW_THREADS=1
 MIN_LENGTH=200
