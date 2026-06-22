@@ -474,15 +474,17 @@ def build_clonal_overview(clonal: ClonalSummary | None) -> str:
     )
 
 
-def build_clonal_warning(clonal: ClonalSummary | None) -> str:
-    if clonal is None or clonal.top_similarity_pct >= 50.0:
+def build_top_clone_warning(row: CloneRow | None, local_scores: dict[int, dict[str, LocalScore]]) -> str:
+    if row is None or row.index not in local_scores:
+        return ""
+    top_clone_vj_pct = local_scores[row.index]["vj"].percent * 100.0
+    if top_clone_vj_pct >= 50.0:
         return ""
     return (
         '<section class="warning-banner" role="alert">'
         '<strong>Warning:</strong> '
-        f'The closest observed match to the supplied clonal sequence is only '
-        f'<strong>{clonal.top_similarity_pct:.1f}% identity</strong>. '
-        'Interpret clonal burden and annotation outputs with caution.'
+        f'The top clone in this report has only <strong>{top_clone_vj_pct:.1f}% VJ local identity</strong>. '
+        'Interpret the reported clonotype assignment with caution.'
         '<div class="warning-hint">A wrong locus selection is one possible explanation. '
         'Check whether <code>--locus igh</code>, <code>--locus igk</code>, or <code>--locus igl</code> matches the assay and clonal sequence you supplied.</div>'
         '</section>'
@@ -516,8 +518,8 @@ def build_html(
         for k, v in summary_cards.items()
     )
     clonal_overview_html = build_clonal_overview(clonal)
-    clonal_warning_html = build_clonal_warning(clonal)
     dominant_html = ""
+    top_clone_warning_html = build_top_clone_warning(dominant, local_scores)
     if dominant is not None:
         dominant_html = (
             '<section class="hero"><div><h2>Top clone</h2>'
@@ -616,7 +618,7 @@ def build_html(
   <div class="wrap">
     <h1>{escape(title)}</h1>
     <p class="sub">Top {top_n} clone-focused report from combined V/J exhaustive clonotyping. Percentages are length-normalized identity values from the TSV output.</p>
-    {clonal_warning_html}
+    {top_clone_warning_html}
     {clonal_overview_html}
     <section class="cards">{card_html}</section>
     <section class="wide-grid">
