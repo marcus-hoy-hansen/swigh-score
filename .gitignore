@@ -1,2 +1,6 @@
 bbmap.sif
 .cdx
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz

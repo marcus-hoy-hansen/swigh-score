@@ -1,11 +1,11 @@
-# swigh-score:
-# Smith-Waterman immunoGlobulin heavy chain local alignment score tool
+# swigh-score
 
-This light-weight tool (swigh-score.sh) performs a parallelized local alignment (Smith-Waterman) of a clonotype sequence from rearranged immunoglobulin heavy chain (IGH) loci to sequencing reads from IGH targeted sequencing. The output of each alignment is the Smith-Waterman score normalized to the length of the shortest sequence for each comparison (clonotype versus sequencing read length). The Smith-Waterman alignment is written in C, whereas the wrapper is provided in bash/shell scripting. 
+`swigh-pipeline` is now the main entrypoint for routine analysis. It performs QC, trimming, length filtering, exhaustive V/J assignment, and HTML report generation for immunoglobulin sequencing data. Optional clonotype scoring/reporting can be added with `--clonal-sequence`.
 
-Parallization is achieved through a scatter gather approach, where the raw sequencing file is split into the number of requested processes (i.e. 31/63 processes used on 32/64 logical core CPU with PCI Express M.2 disks attached or HPC vCPU). Also, IGH sequencing contains duplicates that are counted and collapsed before analyses. In this way several million reads can brutely, but efficiently, be compared in few minutes following file split. 
-
-Please note that all sequencing reads below 200 bp are filtered out as IGH VDJ rearranged sequences below this threshold are generally truncated or non-informative. Currently, output summary uses a similarity threshold of 98%, but can be adjusted. Work in progress to include tabulated 90–100% sequencing similarity. 
+The lower-level tools remain available for direct use:
+- `swigh-score` aligns one clonotype sequence against reads and produces a per-read `.out` table.
+- `swigh-report` summarizes a `swigh-score` `.out` file and calls `swigh-clonotype-sequence` on the top-scoring read.
+- `swigh-clonotype-*` tools expose direct V/J assignment workflows.
 
 ## Get started
 Download the script folder from github:
@@ -22,17 +22,107 @@ chmod u+x config
 
 This also writes `pipeline-containers.sh`, which points the pipeline scripts at a shared SIF directory in `../singularities/`.
 
+## Main pipeline
 
-## Important commands
-To Compare a clonotype sequence to reads in fastq file format: 
+Primary command:
+
+```bash
+./swigh-pipeline [options]
+```
+
+Supported loci:
+- `igh` (default)
+- `igk`
+- `igl`
+
+Core options:
+- `--sample BASE`
+  Use a sample base name. In paired-end mode this looks for `<base>_L001_R1_001.fastq.gz` / `<base>_L001_R2_001.fastq.gz`, with fallback to uncompressed `.fastq`.
+- `--input FILE`
+  In single-end mode (`--paired-end false`), this is the input read file.
+  In paired-end mode, provide the forward read (`R1`) and the script infers `R2` by replacing `_R1_` with `_R2_`.
+- `--paired-end true|false`
+  Default is `true`. Set `false` for single-end mode.
+- `--locus igh|igk|igl`
+  Select the immunoglobulin locus. Default is `igh`.
+- `--length N`
+  Minimum retained read length after trimming/filtering. Default is `200`.
+- `--quality Q`
+  `fastp` qualified quality threshold. Default is `15`.
+- `--workers N`
+  Outer parallel worker count for exhaustive clonotyping. Default is `24`.
+  `SW_THREADS` is intentionally fixed at `1` per sequence inside the pipeline.
+- `--clonal-sequence SEQ`
+  Adds a clonotype-specific analysis on top of the background landscape. This runs `swigh-score` and `swigh-report`, and also performs direct V/J annotation of the provided sequence.
+
+Typical commands:
+
+```bash
+./swigh-pipeline --sample 22-0453-00_S4
+./swigh-pipeline --sample 23-0492-s1_S2 --workers 48
+./swigh-pipeline --input 23-0492-s1_S2_L001_R1_001.fastq
+./swigh-pipeline --input test10k.fastq --paired-end false
+./swigh-pipeline --sample 22-0453-00_S4 --locus igl --clonal-sequence ACTG...
+```
+
+Paired-end notes:
+- `--sample` expects a sample base, not a FASTQ filename.
+- `--input` in paired-end mode expects the R1 filename to contain `_R1_`.
+- If `--sample` is omitted in paired-end `--input` mode, the sample name is derived from the R1 filename.
+
+Outputs:
+- Always:
+  `FASTQC/`, filtered-read FastQC output, `fastp` HTML/JSON, filtered FASTQ, exhaustive V/J TSVs, and HTML landscape report.
+- With `--clonal-sequence`:
+  `<reads>.out` from `swigh-score`, `<base>.clonal.report.txt` from `swigh-report`, and clonal exhaustive V/J annotation.
+
+## Runtime
+
+Container mode:
+- If `apptainer` is available and the configured SIF files exist, the pipeline uses:
+  - `fastqc2.sif`
+  - `fastp.sif`
+  - `bbtools.sif`
+
+Native fallback:
+- If `apptainer` is unavailable, the pipeline falls back to native commands.
+- If tools are missing, it attempts:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y fastqc fastp bbmap
+```
+
+This assumes a Debian/Ubuntu-style system with `sudo`.
+
+## Report call
+
+When `--clonal-sequence SEQ` is provided, `swigh-pipeline` runs:
+- `swigh-score` against the filtered reads
+- `swigh-report` on the resulting `.out` file
+- `swigh-clonotype-exhaustive-vj -r` on the clonal reference sequence
+
+`swigh-report` itself can still be called directly:
+
+```bash
+./swigh-report <file.out> [--locus igh|igk|igl]
+```
+
+It prints:
+- the highest-scoring read
+- similarity burden bins
+- the inferred clonotype of the best-scoring read via `swigh-clonotype-sequence`
+
+## Lower-level tools
+To compare a clonotype sequence to reads in FASTQ format:
 
 ./swigh-score [filename.fastq] [number of threads] [clonotype DNA string]
 
-To report the distribution of sequencing matches accoring to similarity-level as well as the most likely IGHV and IGHJ gene usage. Note that this tool uses the fastq.out-file, which is generated by the swigh-score command:
+To report the distribution of sequencing matches according to similarity level as well as the most likely IGHV and IGHJ gene usage. This tool uses the `.out` file generated by `swigh-score`:
 
-./Swigh-report [file.fastq.out]
+./swigh-report [file.fastq.out] [--locus igh|igk|igl]
 
-To assertain the population of Variable (IGHV) and/or Joining (IGHJ) genes in a fastq file based on a random subset of 1000 sequences from a fastq-file:
+To ascertain the population of Variable (IGHV) and/or Joining (IGHJ) genes in a FASTQ file based on a random subset of 1000 sequences:
 
 ./swigh-clonotype-random [file.fastq] [threads] [vgene/jgene]
 
@@ -40,50 +130,13 @@ To instead assign the likely IGHV and IGHJ usage of the most frequently occurrin
 
 ./swigh-clonotype-amplicon [file.fastq] [optional: number of reads to include]
 
-To assertain the highest matching Variable (IGHV) and Joining (IGHJ) genes to any given clonotype DNA sequence:
+To ascertain the highest matching Variable (IGHV) and Joining (IGHJ) genes to any given clonotype DNA sequence:
 
 ./swigh-clonotype-sequence [DNA sequence]
 
 All clonotype utilities now default to IGH resources (`bin/igmt-igh-*`). To use alternative loci generated by `bin/igmt_format.py`, pass `--locus igk` or `--locus igl`. You can also point at custom resource pairs with `--vgene-files name:sequence` and `--jgene-files name:sequence` (and `--gene-files` in `swigh-clonotype-random`).
 
 Note that this tool is at the experimental prototype stage and may in some cases misclassify the polymorphism, while assigning the correct V and J. The tool is also suitable for the more error-prone Oxford Nanopore long-read sequencing.
-
-## Examples
-./swigh-score test.fastq 31 GCGTCTGGATTCACCTTCAGTGACTACTACATGGGCTGGATCCGCCTGGCTCCAGGGAGGGGGCTGGAGTGGATCTCATTCATTAGCCGAACGGGTAGTCACACAAACACCGCGGACTCTGTGAAGGGCCGATTCAGCATCTCCAGAGACAACGCCAACAATTTACTGTATCTACAAATGAACGGCCTGAGAGTCGAGGACACGGCTTTATATTACTGTGCGAGAGGGGGCCAGGTCAACTGGGAATTACCTGACTTCTGGGGCCAGGGAACCCT
-
-./swigh-report test.fastq.out
-
-./swigh-clonotype-random test.fastq 31 vgene
-
-./swigh-clonotype-amplicon test.fastq
-
-./swigh-clonotype-sequence GCGTCTGGATTCACCTTCAGTGACTACTACATGGGCTGGATCCGCCTGGCTCCAGGGAGGGGGCTGGAGTGGATCTCATTCATTAGCCGAACGGGTAGTCACACAAACACCGCGGACTCTGTGAAGGGCCGATTCAGCATCTCCAGAGACAACGCCAACAATTTACTGTATCTACAAATGAACGGCCTGAGAGTCGAGGACACGGCTTTATATTACTGTGCGAGAGGGGGCCAGGTCAACTGGGAATTACCTGACTTCTGGGGCCAGGGAACCCT
-
-./swigh-clonotype-sequence -r GCGTCTGGATTCACCTTCAGTGACTACTACATGGGCTGGATCCGCCTGGCTCCAGGGAGGGGGCTGGAGTGGATCTCATTCATTAGCCGAACGGGTAGTCACACAAACACCGCGGACTCTGTGAAGGGCCGATTCAGCATCTCCAGAGACAACGCCAACAATTTACTGTATCTACAAATGAACGGCCTGAGAGTCGAGGACACGGCTTTATATTACTGTGCGAGAGGGGGCCAGGTCAACTGGGAATTACCTGACTTCTGGGGCCAGGGAACCCT --locus igk
-
-./swigh-clonotype-random -i test.fastq -g vgene --locus igl
-
-For the IGL paired-end pipeline you can tune the merged-read length cutoff and fastp quality threshold directly:
-
-./swigh-igl-pipeline --length 180 --quality 12 22-0453-00_S4
-
-`swigh-pipeline` supports both single-end and paired-end runs:
-
-./swigh-pipeline --input test10k.fastq --paired-end false
-./swigh-pipeline --sample 22-0453-00_S4
-./swigh-pipeline --input 23-0492-s1_S2_L001_R1_001.fastq
-./swigh-pipeline --sample 23-0492-s1_S2 --workers 48
-
-Paired-end notes:
-- `--sample <base>` looks for either `<base>_L001_R1_001.fastq.gz` / `<base>_L001_R2_001.fastq.gz` or the uncompressed `.fastq` equivalents.
-- `--input <R1.fastq[.gz]>` in paired-end mode infers the matching R2 file by replacing `_R1_` with `_R2_`.
-- If `--sample` is omitted with paired-end `--input`, the sample name is derived from the R1 filename.
-
-Runtime notes:
-- If `apptainer` is available and the configured SIF files exist, the pipeline uses containers.
-- Otherwise it falls back to native tools.
-- If native tools are missing, the scripts attempt to install `fastqc`, `fastp`, and `bbmap` with `sudo apt-get update` and `sudo apt-get install`.
-- `--workers N` controls the parallel outer worker count used by `swigh-clonotype-exhaustive-vj`. `SW_THREADS` remains fixed at 1 per sequence.
 
 ## Updating local version
 You may wish to update your local version, e.g., using the following command (warning, overwrites any changes):

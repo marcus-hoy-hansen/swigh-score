@@ -21,7 +21,7 @@ usage() {
 Usage:
   swigh-pipeline --sample BASE [--locus LOCUS] [--length N] [--quality Q] [--workers N]
                  [--clonal-sequence SEQ]
-                 [--single-end FILE]
+                 [--paired-end true|false] [--input FILE]
 
   --sample BASE   Sample base name (e.g. 22-0453-00_S4).
                   Paired-end mode (default): expects
