@@ -4,6 +4,7 @@ set -euo pipefail
 # ── Paths ────────────────────────────────────────────────────────────────────
 SWIGH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SWIGH_DIR}/pipeline-containers.sh"
+source "${SWIGH_DIR}/pipeline-runtime.sh"
 WORKERS=24
 SW_THREADS=1
 MIN_LENGTH=200
@@ -84,17 +85,18 @@ R2="${WORKDIR}/${BASE}_L001_R2_001.fastq.gz"
 OUTDIR="${WORKDIR}/${BASE}"
 mkdir -p "${OUTDIR}/FASTQC"
 mkdir -p "${OUTDIR}/FASTQC_MERGED"
+pipeline_runtime_banner
 
 # ── Step 1: FastQC on raw reads ───────────────────────────────────────────────
 echo "[1/6] FastQC — raw reads"
-apptainer exec "${FASTQC_SIF}" fastqc "$R1" "$R2" -o "${OUTDIR}/FASTQC" --threads 2
+run_fastqc "$R1" "$R2" -o "${OUTDIR}/FASTQC" --threads 2
 
 # ── Step 2: Adapter trimming, quality filtering, and read merging (fastp) ───
 echo "[2/6] fastp — trim, filter, and merge"
 UNMERGED_R1="${OUTDIR}/${BASE}.unmerged_R1.fastq"
 UNMERGED_R2="${OUTDIR}/${BASE}.unmerged_R2.fastq"
 MERGED="${OUTDIR}/${BASE}.merged.fq"
-apptainer exec "${FASTP_SIF}" fastp \
+run_fastp \
   -i "$R1" -I "$R2" \
   --merge \
   --merged_out "$MERGED" \
@@ -108,12 +110,11 @@ apptainer exec "${FASTP_SIF}" fastp \
 # ── Step 3: Remove merged reads shorter than requested length ───────────────
 echo "[3/6] reformat.sh — filter merged reads < ${MIN_LENGTH} bp"
 MERGED_FILT="${OUTDIR}/${BASE}.merged.min${MIN_LENGTH}.fq"
-apptainer exec "${BBTOOLS_SIF}" reformat.sh \
-  in="$MERGED" out="$MERGED_FILT" minlength="${MIN_LENGTH}"
+run_reformat in="$MERGED" out="$MERGED_FILT" minlength="${MIN_LENGTH}"
 
 # ── Step 4: FastQC on merged reads ───────────────────────────────────────────
 echo "[4/6] FastQC — merged reads"
-apptainer exec "${FASTQC_SIF}" fastqc "$MERGED_FILT" -o "${OUTDIR}/FASTQC_MERGED" --threads 2
+run_fastqc "$MERGED_FILT" -o "${OUTDIR}/FASTQC_MERGED" --threads 2
 
 # ── Step 5: Combined exhaustive IGL V/J assignment ──────────────────────────
 # Must cd to SWIGH_DIR because the script uses relative bin/ paths.

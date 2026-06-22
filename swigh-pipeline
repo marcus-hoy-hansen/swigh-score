@@ -4,6 +4,7 @@ set -euo pipefail
 # ── Paths ────────────────────────────────────────────────────────────────────
 SWIGH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SWIGH_DIR}/pipeline-containers.sh"
+source "${SWIGH_DIR}/pipeline-runtime.sh"
 WORKERS=24
 SW_THREADS=1
 MIN_LENGTH=200
@@ -145,6 +146,7 @@ WORKDIR="${PWD}"
 OUTDIR="${WORKDIR}/${BASE}"
 mkdir -p "${OUTDIR}/FASTQC"
 mkdir -p "${OUTDIR}/FASTQC_FILTERED"
+pipeline_runtime_banner
 
 BACKGROUND_TSV="${OUTDIR}/${BASE}.${LOCUS}.vj.exhaustive.tsv"
 BACKGROUND_HTML="${OUTDIR}/${BASE}.${LOCUS}.vj.exhaustive.html"
@@ -176,12 +178,11 @@ if [[ "${PAIRED_END}" == false ]]; then
 
     # ── Step 1: FastQC on raw reads ─────────────────────────────────────────────
     step "FastQC — raw reads (single-end)"
-    apptainer exec --env "_JAVA_OPTIONS=-Xmx8g" "${FASTQC_SIF}" \
-      fastqc "${NORM_FQ}" -o "${OUTDIR}/FASTQC" --threads 2 --memory 4096
+    run_fastqc "${NORM_FQ}" -o "${OUTDIR}/FASTQC" --threads 2 --memory 4096
 
     # ── Step 2: Adapter trimming and quality filtering (fastp, no merge) ────────
     step "fastp — trim and filter (single-end)"
-    apptainer exec "${FASTP_SIF}" fastp \
+    run_fastp \
       -i "${NORM_FQ}" \
       -o "${TRIMMED}" \
       --qualified_quality_phred "${QUALITY_THRESHOLD}" \
@@ -191,13 +192,11 @@ if [[ "${PAIRED_END}" == false ]]; then
 
     # ── Step 3: Remove reads shorter than requested length ──────────────────────
     step "reformat.sh — filter reads < ${MIN_LENGTH} bp"
-    apptainer exec "${BBTOOLS_SIF}" reformat.sh \
-      in="${TRIMMED}" out="${READS_FILT}" minlength="${MIN_LENGTH}"
+    run_reformat in="${TRIMMED}" out="${READS_FILT}" minlength="${MIN_LENGTH}"
 
     # ── Step 4: FastQC on filtered reads ────────────────────────────────────────
     step "FastQC — filtered reads"
-    apptainer exec --env "_JAVA_OPTIONS=-Xmx8g" "${FASTQC_SIF}" \
-      fastqc "${READS_FILT}" -o "${OUTDIR}/FASTQC_FILTERED" --threads 2 --memory 4096
+    run_fastqc "${READS_FILT}" -o "${OUTDIR}/FASTQC_FILTERED" --threads 2 --memory 4096
   fi
 
 else
@@ -220,11 +219,11 @@ else
   else
     # ── Step 1: FastQC on raw reads ─────────────────────────────────────────────
     step "FastQC — raw reads"
-    apptainer exec "${FASTQC_SIF}" fastqc "$R1" "$R2" -o "${OUTDIR}/FASTQC" --threads 2
+    run_fastqc "$R1" "$R2" -o "${OUTDIR}/FASTQC" --threads 2
 
     # ── Step 2: Adapter trimming, quality filtering, and read merging (fastp) ──
     step "fastp — trim, filter, and merge"
-    apptainer exec "${FASTP_SIF}" fastp \
+    run_fastp \
       -i "$R1" -I "$R2" \
       --merge \
       --merged_out "$MERGED" \
@@ -237,12 +236,11 @@ else
 
     # ── Step 3: Remove merged reads shorter than requested length ───────────────
     step "reformat.sh — filter merged reads < ${MIN_LENGTH} bp"
-    apptainer exec "${BBTOOLS_SIF}" reformat.sh \
-      in="$MERGED" out="$READS_FILT" minlength="${MIN_LENGTH}"
+    run_reformat in="$MERGED" out="$READS_FILT" minlength="${MIN_LENGTH}"
 
     # ── Step 4: FastQC on merged reads ──────────────────────────────────────────
     step "FastQC — merged reads"
-    apptainer exec "${FASTQC_SIF}" fastqc "$READS_FILT" -o "${OUTDIR}/FASTQC_FILTERED" --threads 2
+    run_fastqc "$READS_FILT" -o "${OUTDIR}/FASTQC_FILTERED" --threads 2
   fi
 fi
 
