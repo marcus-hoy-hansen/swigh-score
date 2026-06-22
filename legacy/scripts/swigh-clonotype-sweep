@@ -5,6 +5,16 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${SCRIPT_DIR}/swigh-score" ]]; then
+  ROOT_DIR="${SCRIPT_DIR}"
+elif [[ -f "${SCRIPT_DIR}/../../swigh-score" ]]; then
+  ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+else
+  echo "Error: could not locate repo root from ${SCRIPT_DIR}" >&2
+  exit 1
+fi
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -50,8 +60,8 @@ esac
 [[ "$percent" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "Percent must be numeric" >&2; exit 1; }
 (( threads > 0 )) || { echo "Threads must be > 0" >&2; exit 1; }
 
-gene_seq_file="bin/igmt-${locus}-vgene-sequence.txt"
-gene_name_file="bin/igmt-${locus}-vgene-name.txt"
+gene_seq_file="${ROOT_DIR}/bin/igmt-${locus}-vgene-sequence.txt"
+gene_name_file="${ROOT_DIR}/bin/igmt-${locus}-vgene-name.txt"
 if [[ ! -f "$gene_seq_file" || ! -f "$gene_name_file" ]]; then
   echo "Missing gene files: $gene_name_file / $gene_seq_file" >&2
   exit 1
@@ -77,7 +87,7 @@ paste "$gene_name_file" "$gene_seq_file" | while IFS=$'\t' read -r genename seq;
   [[ -n "$genename" && -n "$seq" ]] || continue
   safe_name=$(echo "$genename" | tr -c 'A-Za-z0-9._-' '_')
   out_prefix_gene="${tmpdir}/${safe_name}."
-  ./swigh-score -i "$input" -r "$seq" -t "$threads" -o "$out_prefix_gene" > /dev/null
+  "${ROOT_DIR}/swigh-score" -i "$input" -r "$seq" -t "$threads" -o "$out_prefix_gene" > /dev/null
 
   outfile="${out_prefix_gene}${input_base}.out"
   filtered="${filtered_dir}/${safe_name}.filtered.out"

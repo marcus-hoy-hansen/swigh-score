@@ -7,6 +7,11 @@ The lower-level tools remain available for direct use:
 - `swigh-report` summarizes a `swigh-score` `.out` file and calls `swigh-clonotype-sequence` on the top-scoring read.
 - `swigh-clonotype-*` tools expose direct V/J assignment workflows.
 
+Legacy and supplementary assets have been moved under `legacy/`:
+- `legacy/scripts/` for older helper scripts
+- `legacy/docs/` for supplementary documentation/PDFs
+- `legacy/media/` for demonstration assets
+
 ## Get started
 Download the script folder from github:
 
@@ -58,10 +63,10 @@ Core options:
 Typical commands:
 
 ```bash
-./swigh-pipeline --sample SAMPLE-A01
-./swigh-pipeline --sample SAMPLE-B02 --workers 48
 ./swigh-pipeline --input SAMPLE-B02_L001_R1_001.fastq
 ./swigh-pipeline --input test10k.fastq --paired-end false
+./swigh-pipeline --sample SAMPLE-A01
+./swigh-pipeline --sample SAMPLE-B02 --workers 48
 ./swigh-pipeline --sample SAMPLE-A01 --locus igl --clonal-sequence ACTG...
 ```
 
