@@ -58,11 +58,11 @@ Core options:
 Typical commands:
 
 ```bash
-./swigh-pipeline --sample 22-0453-00_S4
-./swigh-pipeline --sample 23-0492-s1_S2 --workers 48
-./swigh-pipeline --input 23-0492-s1_S2_L001_R1_001.fastq
+./swigh-pipeline --sample SAMPLE-A01
+./swigh-pipeline --sample SAMPLE-B02 --workers 48
+./swigh-pipeline --input SAMPLE-B02_L001_R1_001.fastq
 ./swigh-pipeline --input test10k.fastq --paired-end false
-./swigh-pipeline --sample 22-0453-00_S4 --locus igl --clonal-sequence ACTG...
+./swigh-pipeline --sample SAMPLE-A01 --locus igl --clonal-sequence ACTG...
 ```
 
 Paired-end notes:
